@@ -1,0 +1,6 @@
+{
+  "name": "GitGraph Builder MVP",
+  "description": "Visual Git graph builder using React Flow and Zustand. Create commits, branches, and merges interactively without a terminal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
