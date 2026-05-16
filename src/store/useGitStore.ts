@@ -29,8 +29,10 @@ interface GitState {
   addParentToCommit: (childId: string, parentId: string) => void;
   removeParentFromCommit: (childId: string, parentId: string) => void;
   updateEdgeColor: (childId: string, parentId: string, color: string) => void;
+  updateBranchName: (branchId: string, name: string) => void;
   deleteCommit: (commitId: string) => void;
   createCommitAt: (branchId: string, position: { x: number, y: number }) => void;
+  createBranchWithCommit: (position: { x: number, y: number }) => void;
   loadGraph: (data: GitGraphExport) => void;
   getSavedGraph: () => GitGraphExport;
   reset: () => void;
@@ -133,6 +135,39 @@ export const useGitStore = create<GitState>((set, get) => {
         branches: {
           ...state.branches,
           [branch.id]: { ...branch, head: commitId }
+        },
+        commitSequence: state.commitSequence + 1,
+        activeBranch: branchId
+      };
+    }),
+
+    createBranchWithCommit: (position) => set((state) => {
+      console.log("GitStore: createBranchWithCommit", position);
+      const branchId = uuidv4();
+      const commitId = uuidv4().substring(0, 8);
+      const color = getNextColor();
+
+      const newBranch: Branch = {
+        id: branchId,
+        name: `branch-${Object.keys(state.branches).length + 1}`,
+        head: commitId,
+        color
+      };
+
+      const newCommit: Commit = {
+        id: commitId,
+        message: `Initial commit on ${newBranch.name}`,
+        parents: [],
+        branch: branchId,
+        timestamp: Date.now(),
+        position
+      };
+
+      return {
+        commits: { ...state.commits, [commitId]: newCommit },
+        branches: {
+          ...state.branches,
+          [branchId]: newBranch
         },
         commitSequence: state.commitSequence + 1,
         activeBranch: branchId
@@ -249,6 +284,18 @@ export const useGitStore = create<GitState>((set, get) => {
              ...child, 
              parentColors: { ...(child.parentColors || {}), [parentId]: color }
           }
+        }
+      };
+    }),
+
+    updateBranchName: (branchId, name) => set((state) => {
+      console.log("GitStore: updateBranchName", branchId, name);
+      const branch = state.branches[branchId];
+      if (!branch) return state;
+      return {
+        branches: {
+          ...state.branches,
+          [branchId]: { ...branch, name }
         }
       };
     }),

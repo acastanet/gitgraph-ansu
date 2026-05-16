@@ -14,6 +14,8 @@ import {
   MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { toSvg, toPng } from 'html-to-image';
+import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2 } from 'lucide-react';
 import { useGitStore } from '../store/useGitStore';
 import CommitNode from './CommitNode';
 import LaneNode from './LaneNode';
@@ -25,14 +27,100 @@ const nodeTypes = {
 };
 
 function GitGraphInner() {
-  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranch } = useGitStore();
+  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranchWithCommit, createBranch, updateBranchName } = useGitStore();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
   const [branchPrompt, setBranchPrompt] = useState<{isOpen: boolean, commitId: string, name: string}>({isOpen: false, commitId: '', name: ''});
+  const [renameBranchPrompt, setRenameBranchPrompt] = useState<{isOpen: boolean, branchId: string, name: string}>({isOpen: false, branchId: '', name: ''});
   const [colorPrompt, setColorPrompt] = useState<{isOpen: boolean, edge: Edge | null, color: string}>({isOpen: false, edge: null, color: ''});
   const [commitPrompt, setCommitPrompt] = useState<{isOpen: boolean, commitId: string, message: string, messageRotated: boolean}>({isOpen: false, commitId: '', message: '', messageRotated: false});
+  const [savePromptOpen, setSavePromptOpen] = useState(false);
+  const [helpPromptOpen, setHelpPromptOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportSVG = useCallback(() => {
+    setSavePromptOpen(false);
+    setTimeout(() => {
+      const el = document.querySelector('.react-flow') as HTMLElement;
+      if (!el) return;
+      toSvg(el, {
+        backgroundColor: '#f8fafc',
+        filter: (node) => {
+          return !node?.classList?.contains('react-flow__minimap') &&
+                 !node?.classList?.contains('react-flow__controls');
+        },
+      }).then((dataUrl) => {
+        const a = document.createElement('a');
+        a.setAttribute('download', 'git-graph.svg');
+        a.setAttribute('href', dataUrl);
+        a.click();
+      }).catch((err) => {
+        console.error('Failed to export SVG', err);
+      });
+    }, 200);
+  }, []);
+
+  const handleExportPNG = useCallback(() => {
+    setSavePromptOpen(false);
+    setTimeout(() => {
+      const el = document.querySelector('.react-flow') as HTMLElement;
+      if (!el) return;
+      toPng(el, {
+        backgroundColor: '#f8fafc',
+        filter: (node) => {
+          return !node?.classList?.contains('react-flow__minimap') &&
+                 !node?.classList?.contains('react-flow__controls');
+        },
+      }).then((dataUrl) => {
+        const a = document.createElement('a');
+        a.setAttribute('download', 'git-graph.png');
+        a.setAttribute('href', dataUrl);
+        a.click();
+      }).catch((err) => {
+        console.error('Failed to export PNG', err);
+      });
+    }, 200);
+  }, []);
+
+  const handleExportJSON = useCallback(() => {
+    setSavePromptOpen(false);
+    const data = useGitStore.getState().getSavedGraph();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'git-graph.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    setSavePromptOpen(false);
+  }, []);
+
+  const handleLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          useGitStore.getState().loadGraph(JSON.parse(content));
+        } catch (err) {
+          alert("Invalid JSON file");
+        }
+      };
+      reader.readAsText(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFitViewCommits = useCallback(() => {
+    const commitNodes = nodes.filter(n => n.type === 'commit');
+    fitView({ nodes: commitNodes.length > 0 ? commitNodes : undefined, padding: 0.5, duration: 800 });
+  }, [nodes, fitView]);
 
   const onNodesChangeCustom = useCallback((changes: any[]) => {
     // Lock Y axis when dragging so they stay on their lane
@@ -77,12 +165,14 @@ function GitGraphInner() {
     // If we click exactly on y=250, it is 150 above 100, which is lane 1.
     // Let's broaden the hit area so half above and half below snaps to the nearest lane.
     const branchIndex = Math.max(0, Math.round((position.y - 100) / 150));
-    const targetBranch = branchList[Math.min(branchIndex, branchList.length - 1)];
-
-    if (targetBranch) {
+    
+    if (branchIndex < branchList.length) {
+      const targetBranch = branchList[branchIndex];
       createCommitAt(targetBranch.id, position);
+    } else {
+      createBranchWithCommit(position);
     }
-  }, [screenToFlowPosition, branches, createCommitAt]);
+  }, [screenToFlowPosition, branches, createCommitAt, createBranchWithCommit]);
 
   const onPaneClick = useCallback(
     (e: React.MouseEvent) => {
@@ -97,6 +187,12 @@ function GitGraphInner() {
       e.preventDefault();
       if (node.type === 'commit') {
         setBranchPrompt({ isOpen: true, commitId: node.id, name: '' });
+      } else if (node.type === 'lane') {
+        const branchId = node.id.replace('lane-', '');
+        const branch = useGitStore.getState().branches[branchId];
+        if (branch) {
+          setRenameBranchPrompt({ isOpen: true, branchId, name: branch.name });
+        }
       }
     },
     []
@@ -269,7 +365,45 @@ function GitGraphInner() {
   }, [screenToFlowPosition, createCommitAt]);
 
   return (
-    <div className="w-full h-full relative bg-slate-50" onDoubleClick={onDoubleClick}>
+    <div className="w-full h-full relative bg-slate-50" onDoubleClick={onDoubleClick} ref={reactFlowWrapper}>
+      <div className="absolute top-4 right-4 z-10 flex gap-2 floating-tools">
+        <button
+          onClick={handleFitViewCommits}
+          className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+          title="Auto Center Commits"
+        >
+          <Crosshair className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+          title="Import Graph (JSON)"
+        >
+          <Upload className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setSavePromptOpen(true)}
+          className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+          title="Export / Save"
+        >
+          <Save className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setHelpPromptOpen(true)}
+          className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+          title="Help & Shortcuts"
+        >
+          <HelpCircle className="w-5 h-5" />
+        </button>
+        <input 
+          type="file" 
+          accept=".json" 
+          className="hidden" 
+          ref={fileInputRef} 
+          onChange={handleLoad} 
+        />
+      </div>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -332,6 +466,41 @@ function GitGraphInner() {
             className="w-full py-2 bg-cyan-500 text-white rounded-md font-bold hover:bg-cyan-600 shadow-sm transition-colors disabled:opacity-50"
           >
             Create Branch
+          </button>
+        </div>
+      </Dialog>
+
+      {/* Rename Branch Dialog */}
+      <Dialog isOpen={renameBranchPrompt.isOpen} onClose={() => setRenameBranchPrompt({ ...renameBranchPrompt, isOpen: false })} title="Rename Branch">
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Branch Name</label>
+            <input 
+              type="text" 
+              autoFocus
+              value={renameBranchPrompt.name}
+              onChange={e => setRenameBranchPrompt({ ...renameBranchPrompt, name: e.target.value })}
+              placeholder="feature/new-branch"
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && renameBranchPrompt.name) {
+                  updateBranchName(renameBranchPrompt.branchId, renameBranchPrompt.name);
+                  setRenameBranchPrompt({ isOpen: false, branchId: '', name: '' });
+                }
+              }}
+            />
+          </div>
+          <button 
+            onClick={() => {
+              if (renameBranchPrompt.name) {
+                updateBranchName(renameBranchPrompt.branchId, renameBranchPrompt.name);
+                setRenameBranchPrompt({ isOpen: false, branchId: '', name: '' });
+              }
+            }}
+            disabled={!renameBranchPrompt.name}
+            className="w-full py-2 bg-cyan-500 text-white rounded-md font-bold hover:bg-cyan-600 shadow-sm transition-colors disabled:opacity-50"
+          >
+            Rename Branch
           </button>
         </div>
       </Dialog>
@@ -411,6 +580,57 @@ function GitGraphInner() {
           >
             Save Commit
           </button>
+        </div>
+      </Dialog>
+
+      {/* Save / Export Dialog */}
+      <Dialog isOpen={savePromptOpen} onClose={() => setSavePromptOpen(false)} title="Export & Save">
+        <div className="flex flex-col gap-3">
+          <button 
+            onClick={handleExportSVG}
+            className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <Image className="w-5 h-5 text-indigo-500" /> SVG (Vectorized)
+            </span>
+            <Download className="w-4 h-4 text-slate-400" />
+          </button>
+          
+          <button 
+            onClick={handleExportPNG}
+            className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <Image className="w-5 h-5 text-indigo-500" /> PNG (Rasterized)
+            </span>
+            <Download className="w-4 h-4 text-slate-400" />
+          </button>
+
+          <button 
+            onClick={handleExportJSON}
+            className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <FileJson className="w-5 h-5 text-indigo-500" /> JSON (Data Backup)
+            </span>
+            <Download className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
+      </Dialog>
+
+      {/* Help Dialog */}
+      <Dialog isOpen={helpPromptOpen} onClose={() => setHelpPromptOpen(false)} title="Aide & Raccourcis">
+        <div className="flex flex-col gap-4 text-sm text-slate-600">
+          <p>Cet éditeur minimaliste GitGraph vous permet de tracer vos dépôts facilement.</p>
+          <ul className="space-y-2 list-disc list-inside bg-slate-50 p-4 rounded-md border border-slate-200">
+            <li><strong>Double-clic dans le vide</strong> : Créer une nouvelle branche et un commit.</li>
+            <li><strong>Double-clic sur le début d'une branche (ligne de vie)</strong> : Créer un commit sur cette branche.</li>
+            <li><strong>Double-clic sur un commit</strong> : Modifier le message et l'orientation de l'étiquette.</li>
+            <li><strong>Clic-droit sur un commit</strong> : Créer une nouvelle branche à partir de ce commit.</li>
+            <li><strong>Clic-droit sur le début d'une branche</strong> : Renommer la branche.</li>
+            <li><strong>Glisser-déposer d'un commit à un autre</strong> : Ajouter un parent (fusion ou lien de validation).</li>
+            <li><strong>Clic-gauche sur un lien/flèche</strong> : Changer la couleur du lien.</li>
+          </ul>
         </div>
       </Dialog>
 
