@@ -24,7 +24,7 @@ export default function Toolbar() {
     reset,
     activeBranch,
     branches 
-  } = useGitStore();
+  } = useGitStore(state => state);
 
   const handleCreateCommit = () => {
     createCommit(commitMsg);
@@ -159,7 +159,9 @@ export default function Toolbar() {
           <Play className="w-4 h-4" fill="currentColor" /> Play
         </button>
         <button 
-          onClick={reset}
+          onClick={() => {
+            reset();
+          }}
           className="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-md ml-1 transition-colors" 
           title="Reset Graph"
         >

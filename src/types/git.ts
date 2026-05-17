@@ -14,6 +14,7 @@ export type Branch = {
   name: string;
   head: string | null;
   color: string;
+  order?: number;
 };
 
 export type GitGraphExport = {

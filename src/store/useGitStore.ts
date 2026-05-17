@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { temporal } from 'zundo';
 import { v4 as uuidv4 } from 'uuid';
 import { Commit, Branch, GitGraphExport } from '../types/git';
 
@@ -30,6 +32,7 @@ interface GitState {
   removeParentFromCommit: (childId: string, parentId: string) => void;
   updateEdgeColor: (childId: string, parentId: string, color: string) => void;
   updateBranchName: (branchId: string, name: string) => void;
+  moveBranch: (branchId: string, direction: 'up' | 'down') => void;
   deleteCommit: (commitId: string) => void;
   createCommitAt: (branchId: string, position: { x: number, y: number }) => void;
   createBranchWithCommit: (position: { x: number, y: number }) => void;
@@ -42,8 +45,11 @@ interface GitState {
   getNextColor: () => string;
 }
 
-export const useGitStore = create<GitState>((set, get) => {
-  const getNextColor = () => {
+export const useGitStore = create<GitState>()(
+  temporal(
+    persist(
+      (set, get) => {
+      const getNextColor = () => {
     const { branches } = get();
     const usedColors = Object.values(branches).map(b => b.color);
     const available = COLORS.filter(c => !usedColors.includes(c));
@@ -61,6 +67,7 @@ export const useGitStore = create<GitState>((set, get) => {
         name: 'main',
         head: null,
         color: initialBranchColor,
+        order: 0,
       }
     },
     activeBranch: initialBranchId,
@@ -151,7 +158,8 @@ export const useGitStore = create<GitState>((set, get) => {
         id: branchId,
         name: `branch-${Object.keys(state.branches).length + 1}`,
         head: commitId,
-        color
+        color,
+        order: Object.keys(state.branches).length
       };
 
       const newCommit: Commit = {
@@ -186,7 +194,8 @@ export const useGitStore = create<GitState>((set, get) => {
             id: branchId,
             name,
             head: headCommitId,
-            color
+            color,
+            order: Object.keys(state.branches).length
           }
         },
         activeBranch: branchId // Checkout new branch automatically
@@ -300,6 +309,46 @@ export const useGitStore = create<GitState>((set, get) => {
       };
     }),
 
+    moveBranch: (branchId, direction) => set((state) => {
+      console.log("GitStore: moveBranch", branchId, direction);
+      
+      const branchList = Object.values(state.branches).sort((a, b) => {
+        const orderA = a.order ?? 0;
+        const orderB = b.order ?? 0;
+        if (orderA !== orderB) return orderA - orderB;
+        if (a.name === 'main') return -1;
+        if (b.name === 'main') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Initialize order if it doesn't exist
+      branchList.forEach((b, index) => {
+        if (b.order === undefined) b.order = index;
+      });
+
+      const currentIndex = branchList.findIndex(b => b.id === branchId);
+      if (currentIndex === -1) return state;
+      
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= branchList.length) return state;
+
+      // Swap orders
+      const currentBranch = branchList[currentIndex];
+      const targetBranch = branchList[targetIndex];
+      
+      const tempOrder = currentBranch.order;
+      currentBranch.order = targetBranch.order;
+      targetBranch.order = tempOrder;
+
+      return {
+        branches: {
+          ...state.branches,
+          [currentBranch.id]: { ...currentBranch },
+          [targetBranch.id]: { ...targetBranch }
+        }
+      };
+    }),
+
     deleteCommit: (commitId) => set((state) => {
       console.log("GitStore: deleteCommit", commitId);
       const newCommits = { ...state.commits };
@@ -343,6 +392,7 @@ export const useGitStore = create<GitState>((set, get) => {
             name: 'main',
             head: null,
             color: COLORS[0],
+            order: 0,
           }
         },
         activeBranch: mainId,
@@ -355,4 +405,23 @@ export const useGitStore = create<GitState>((set, get) => {
 
     getNextColor,
   };
-});
+}, {
+  name: 'git-graph-storage',
+  partialize: (state) => ({ 
+    commits: state.commits, 
+    branches: state.branches, 
+    activeBranch: state.activeBranch,
+    commitSequence: state.commitSequence,
+  }),
+}),
+{
+      partialize: (state) => ({
+        commits: state.commits,
+        branches: state.branches,
+        activeBranch: state.activeBranch,
+        commitSequence: state.commitSequence,
+      }),
+      limit: 50,
+    }
+  )
+);

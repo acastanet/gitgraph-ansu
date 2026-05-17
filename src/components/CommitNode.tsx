@@ -30,7 +30,7 @@ const CommitNode = ({ data }: CommitNodeProps) => {
       {/* Label/Tooltip */}
       <div 
         className={cn(
-          "absolute flex flex-col z-20 pointer-events-none transition-all",
+          "absolute flex flex-col z-20 transition-all cursor-pointer pointer-events-auto",
           data.messageRotated 
             ? "bottom-1/2 left-1/2 mb-2 ml-2 -rotate-45 origin-bottom-left opacity-100 items-start" 
             : "top-8 pt-2 items-center opacity-70 group-hover:opacity-100"

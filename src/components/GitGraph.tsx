@@ -12,10 +12,12 @@ import {
   Node,
   Edge,
   MarkerType,
+  getNodesBounds,
+  getViewportForBounds,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { toSvg, toPng } from 'html-to-image';
-import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2 } from 'lucide-react';
+import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2, Undo, Redo, RefreshCcw } from 'lucide-react';
 import { useGitStore } from '../store/useGitStore';
 import CommitNode from './CommitNode';
 import LaneNode from './LaneNode';
@@ -27,10 +29,13 @@ const nodeTypes = {
 };
 
 function GitGraphInner() {
-  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranchWithCommit, createBranch, updateBranchName } = useGitStore();
+  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranchWithCommit, createBranch, updateBranchName } = useGitStore(state => state);
+  const resetStore = useGitStore(state => state.reset);
+  const { undo, redo } = useGitStore.temporal.getState();
+  
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, getNodes } = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
   const [branchPrompt, setBranchPrompt] = useState<{isOpen: boolean, commitId: string, name: string}>({isOpen: false, commitId: '', name: ''});
@@ -44,13 +49,34 @@ function GitGraphInner() {
   const handleExportSVG = useCallback(() => {
     setSavePromptOpen(false);
     setTimeout(() => {
-      const el = document.querySelector('.react-flow') as HTMLElement;
+      const nodes = getNodes();
+      // If there are no nodes, just export the viewport
+      if (nodes.length === 0) return;
+
+      const nodesBounds = getNodesBounds(nodes);
+      const width = nodesBounds.width + 100; // Add some padding
+      const height = nodesBounds.height + 100;
+      
+      const transform = getViewportForBounds(
+        nodesBounds,
+        width,
+        height,
+        0.1,
+        2,
+        0
+      );
+
+      const el = document.querySelector('.react-flow__viewport') as HTMLElement;
       if (!el) return;
+      
       toSvg(el, {
         backgroundColor: '#f8fafc',
-        filter: (node) => {
-          return !node?.classList?.contains('react-flow__minimap') &&
-                 !node?.classList?.contains('react-flow__controls');
+        width,
+        height,
+        style: {
+          width: width.toString(),
+          height: height.toString(),
+          transform: `translate(${transform.x + 50}px, ${transform.y + 50}px) scale(${transform.zoom})`,
         },
       }).then((dataUrl) => {
         const a = document.createElement('a');
@@ -61,18 +87,38 @@ function GitGraphInner() {
         console.error('Failed to export SVG', err);
       });
     }, 200);
-  }, []);
+  }, [getNodes]);
 
   const handleExportPNG = useCallback(() => {
     setSavePromptOpen(false);
     setTimeout(() => {
-      const el = document.querySelector('.react-flow') as HTMLElement;
+      const nodes = getNodes();
+      if (nodes.length === 0) return;
+
+      const nodesBounds = getNodesBounds(nodes);
+      const width = nodesBounds.width + 100;
+      const height = nodesBounds.height + 100;
+      
+      const transform = getViewportForBounds(
+        nodesBounds,
+        width,
+        height,
+        0.1,
+        2,
+        0
+      );
+
+      const el = document.querySelector('.react-flow__viewport') as HTMLElement;
       if (!el) return;
+
       toPng(el, {
         backgroundColor: '#f8fafc',
-        filter: (node) => {
-          return !node?.classList?.contains('react-flow__minimap') &&
-                 !node?.classList?.contains('react-flow__controls');
+        width,
+        height,
+        style: {
+          width: width.toString(),
+          height: height.toString(),
+          transform: `translate(${transform.x + 50}px, ${transform.y + 50}px) scale(${transform.zoom})`,
         },
       }).then((dataUrl) => {
         const a = document.createElement('a');
@@ -83,7 +129,7 @@ function GitGraphInner() {
         console.error('Failed to export PNG', err);
       });
     }, 200);
-  }, []);
+  }, [getNodes]);
 
   const handleExportJSON = useCallback(() => {
     setSavePromptOpen(false);
@@ -154,6 +200,9 @@ function GitGraphInner() {
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
     
     const branchList = Object.values(branches).sort((a, b) => {
+      const orderA = a.order ?? 0;
+      const orderB = b.order ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
       if (a.name === 'main') return -1;
       if (b.name === 'main') return 1;
       return a.name.localeCompare(b.name);
@@ -205,6 +254,9 @@ function GitGraphInner() {
       commitList = commitList.slice(0, historyCurrentSequence);
     }
     const branchList = Object.values(branches).sort((a, b) => {
+      const orderA = a.order ?? 0;
+      const orderB = b.order ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
       if (a.name === 'main') return -1;
       if (b.name === 'main') return 1;
       return a.name.localeCompare(b.name);
@@ -220,7 +272,15 @@ function GitGraphInner() {
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
 
-    const graphWidth = Math.max(3000, commitList.length * 250 + 500);
+    let maxCommitX = 0;
+    commitList.forEach((commit, i) => {
+      const defaultX = i * 250 + 150;
+      const x = commit.position?.x ?? defaultX;
+      if (x > maxCommitX) maxCommitX = x;
+    });
+
+    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const graphWidth = Math.max(windowWidth, maxCommitX + 300);
 
     branchList.forEach((branch, index) => {
       newNodes.push({
@@ -232,6 +292,8 @@ function GitGraphInner() {
           name: branch.name,
           color: branch.color,
           width: graphWidth,
+          isFirst: index === 0,
+          isLast: index === branchList.length - 1,
         },
         draggable: false,
         selectable: false,
@@ -357,6 +419,14 @@ function GitGraphInner() {
         });
       }
     } else if (node.type === 'lane') {
+      if ((e.target as HTMLElement).closest('.lane-label')) {
+        const branchId = node.id.replace('lane-', '');
+        const branch = useGitStore.getState().branches[branchId];
+        if (branch) {
+          setRenameBranchPrompt({ isOpen: true, branchId, name: branch.name });
+        }
+        return;
+      }
       // Double click on a lane node creates a commit on that lane
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const branchId = node.id.replace('lane-', '');
@@ -367,31 +437,57 @@ function GitGraphInner() {
   return (
     <div className="w-full h-full relative bg-slate-50" onDoubleClick={onDoubleClick} ref={reactFlowWrapper}>
       <div className="absolute top-4 right-4 z-10 flex gap-2 floating-tools">
+        <div className="flex gap-1 mr-2 border-r border-slate-200 pr-3">
+          <button
+            onClick={() => undo()}
+            className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+            title="Annuler (Undo)"
+          >
+            <Undo className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => redo()}
+            className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+            title="Refaire (Redo)"
+          >
+            <Redo className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              resetStore();
+            }}
+            className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors ml-2"
+            title="Réinitialiser le dépôt"
+          >
+            <RefreshCcw className="w-5 h-5" />
+          </button>
+        </div>
+
         <button
           onClick={handleFitViewCommits}
           className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Auto Center Commits"
+          title="Centrer la vue"
         >
           <Crosshair className="w-5 h-5" />
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Import Graph (JSON)"
+          title="Importer (JSON)"
         >
           <Upload className="w-5 h-5" />
         </button>
         <button
           onClick={() => setSavePromptOpen(true)}
           className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Export / Save"
+          title="Exporter & Sauvegarder"
         >
           <Save className="w-5 h-5" />
         </button>
         <button
           onClick={() => setHelpPromptOpen(true)}
           className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Help & Shortcuts"
+          title="Aide & Raccourcis"
         >
           <HelpCircle className="w-5 h-5" />
         </button>
@@ -432,20 +528,20 @@ function GitGraphInner() {
           style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }} 
           maskColor="rgba(255, 255, 255, 0.7)"
         />
-        <Background gap={32} size={1} color="#cbd5e1" />
+
       </ReactFlow>
 
       {/* Branch Context Menu Dialog */}
-      <Dialog isOpen={branchPrompt.isOpen} onClose={() => setBranchPrompt({ ...branchPrompt, isOpen: false })} title="Create Branch">
+      <Dialog isOpen={branchPrompt.isOpen} onClose={() => setBranchPrompt({ ...branchPrompt, isOpen: false })} title="Créer une branche">
         <div className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">New Branch Name</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Nom de la nouvelle branche</label>
             <input 
               type="text" 
               autoFocus
               value={branchPrompt.name}
               onChange={e => setBranchPrompt({ ...branchPrompt, name: e.target.value })}
-              placeholder="feature/new-branch"
+              placeholder="ex: feature/nouvelle-fonction"
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
               onKeyDown={e => {
                 if (e.key === 'Enter' && branchPrompt.name) {
@@ -465,22 +561,22 @@ function GitGraphInner() {
             disabled={!branchPrompt.name}
             className="w-full py-2 bg-cyan-500 text-white rounded-md font-bold hover:bg-cyan-600 shadow-sm transition-colors disabled:opacity-50"
           >
-            Create Branch
+            Créer la branche
           </button>
         </div>
       </Dialog>
 
       {/* Rename Branch Dialog */}
-      <Dialog isOpen={renameBranchPrompt.isOpen} onClose={() => setRenameBranchPrompt({ ...renameBranchPrompt, isOpen: false })} title="Rename Branch">
+      <Dialog isOpen={renameBranchPrompt.isOpen} onClose={() => setRenameBranchPrompt({ ...renameBranchPrompt, isOpen: false })} title="Renommer la branche">
         <div className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Branch Name</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Nom de la branche</label>
             <input 
               type="text" 
               autoFocus
               value={renameBranchPrompt.name}
               onChange={e => setRenameBranchPrompt({ ...renameBranchPrompt, name: e.target.value })}
-              placeholder="feature/new-branch"
+              placeholder="ex: feature/nouvelle-fonction"
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
               onKeyDown={e => {
                 if (e.key === 'Enter' && renameBranchPrompt.name) {
@@ -500,22 +596,22 @@ function GitGraphInner() {
             disabled={!renameBranchPrompt.name}
             className="w-full py-2 bg-cyan-500 text-white rounded-md font-bold hover:bg-cyan-600 shadow-sm transition-colors disabled:opacity-50"
           >
-            Rename Branch
+            Renommer la branche
           </button>
         </div>
       </Dialog>
 
       {/* Edge Context Menu Dialog */}
-      <Dialog isOpen={colorPrompt.isOpen} onClose={() => setColorPrompt({ ...colorPrompt, isOpen: false })} title="Change Link Color">
+      <Dialog isOpen={colorPrompt.isOpen} onClose={() => setColorPrompt({ ...colorPrompt, isOpen: false })} title="Couleur du lien">
         <div className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Link Color (Hex)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Couleur du lien (Hex)</label>
             <input 
               type="text" 
               autoFocus
               value={colorPrompt.color}
               onChange={e => setColorPrompt({ ...colorPrompt, color: e.target.value })}
-              placeholder="#ff0000 or empty to reset"
+              placeholder="#ff0000 ou vide pour réinitialiser"
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -536,22 +632,22 @@ function GitGraphInner() {
             }}
             className="w-full py-2 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 shadow-sm transition-colors"
           >
-            Save Color
+            Enregistrer la couleur
           </button>
         </div>
       </Dialog>
 
       {/* Edit Commit Dialog */}
-      <Dialog isOpen={commitPrompt.isOpen} onClose={() => setCommitPrompt({ ...commitPrompt, isOpen: false })} title="Edit Commit">
+      <Dialog isOpen={commitPrompt.isOpen} onClose={() => setCommitPrompt({ ...commitPrompt, isOpen: false })} title="Éditer le commit">
         <div className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Commit Message</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Message du commit</label>
             <input 
               type="text" 
               autoFocus
               value={commitPrompt.message}
               onChange={e => setCommitPrompt({ ...commitPrompt, message: e.target.value })}
-              placeholder="Fix amazing bug"
+              placeholder="Correction bug incroyable"
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -569,7 +665,7 @@ function GitGraphInner() {
               onChange={e => setCommitPrompt({ ...commitPrompt, messageRotated: e.target.checked })}
               className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500"
             />
-            <label htmlFor="rotate-label" className="text-sm font-medium text-slate-700">Rotate label 45°</label>
+            <label htmlFor="rotate-label" className="text-sm font-medium text-slate-700">Tourner l'étiquette à 45°</label>
           </div>
           <button 
             onClick={() => {
@@ -578,20 +674,20 @@ function GitGraphInner() {
             }}
             className="w-full py-2 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 shadow-sm transition-colors"
           >
-            Save Commit
+            Enregistrer le commit
           </button>
         </div>
       </Dialog>
 
       {/* Save / Export Dialog */}
-      <Dialog isOpen={savePromptOpen} onClose={() => setSavePromptOpen(false)} title="Export & Save">
+      <Dialog isOpen={savePromptOpen} onClose={() => setSavePromptOpen(false)} title="Exporter & Sauvegarder">
         <div className="flex flex-col gap-3">
           <button 
             onClick={handleExportSVG}
             className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-2">
-              <Image className="w-5 h-5 text-indigo-500" /> SVG (Vectorized)
+              <Image className="w-5 h-5 text-indigo-500" /> SVG (Vectoriel)
             </span>
             <Download className="w-4 h-4 text-slate-400" />
           </button>
@@ -601,7 +697,7 @@ function GitGraphInner() {
             className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-2">
-              <Image className="w-5 h-5 text-indigo-500" /> PNG (Rasterized)
+              <Image className="w-5 h-5 text-indigo-500" /> PNG (Raster)
             </span>
             <Download className="w-4 h-4 text-slate-400" />
           </button>
@@ -611,7 +707,7 @@ function GitGraphInner() {
             className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-2">
-              <FileJson className="w-5 h-5 text-indigo-500" /> JSON (Data Backup)
+              <FileJson className="w-5 h-5 text-indigo-500" /> JSON (Sauvegarde Data)
             </span>
             <Download className="w-4 h-4 text-slate-400" />
           </button>

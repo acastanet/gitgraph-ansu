@@ -1,7 +1,7 @@
 import { useGitStore } from "../store/useGitStore";
 
 export default function StatusBar() {
-  const { commits, branches, activeBranch } = useGitStore();
+  const { commits, branches, activeBranch } = useGitStore(state => state);
   
   const commitCount = Object.keys(commits).length;
   const branchCount = Object.keys(branches).length;
