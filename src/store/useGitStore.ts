@@ -20,14 +20,16 @@ interface GitState {
   activeBranch: string | null;
   commitSequence: number;
   historyCurrentSequence: number | null;
+  layoutDirection: 'horizontal' | 'vertical';
 
   // Actions
+  setLayoutDirection: (layout: 'horizontal' | 'vertical') => void;
   createCommit: (message?: string) => void;
   createBranch: (name: string, headCommitId: string) => void;
   mergeBranches: (sourceBranchId: string, targetBranchId: string, message?: string) => void;
   setActiveBranch: (branchId: string) => void;
   updateCommitPosition: (commitId: string, position: { x: number, y: number }) => void;
-  updateCommitMessage: (commitId: string, message: string, messageRotated?: boolean) => void;
+  updateCommitMessage: (commitId: string, message: string, messageRotated?: boolean, hideId?: boolean) => void;
   addParentToCommit: (childId: string, parentId: string) => void;
   removeParentFromCommit: (childId: string, parentId: string) => void;
   updateEdgeColor: (childId: string, parentId: string, color: string) => void;
@@ -73,6 +75,9 @@ export const useGitStore = create<GitState>()(
     activeBranch: initialBranchId,
     commitSequence: 0,
     historyCurrentSequence: null,
+    layoutDirection: 'horizontal',
+
+    setLayoutDirection: (layout) => set({ layoutDirection: layout }),
 
     createCommit: (message) => set((state) => {
       console.log("GitStore: createCommit", message);
@@ -156,7 +161,7 @@ export const useGitStore = create<GitState>()(
 
       const newBranch: Branch = {
         id: branchId,
-        name: `branch-${Object.keys(state.branches).length + 1}`,
+        name: String.fromCharCode(64 + Object.keys(state.branches).length), // A, B, C...
         head: commitId,
         color,
         order: Object.keys(state.branches).length
@@ -245,14 +250,14 @@ export const useGitStore = create<GitState>()(
       };
     }),
 
-    updateCommitMessage: (commitId, message, messageRotated) => set((state) => {
-      console.log("GitStore: updateCommitMessage", commitId, message, messageRotated);
+    updateCommitMessage: (commitId, message, messageRotated, hideId) => set((state) => {
+      console.log("GitStore: updateCommitMessage", commitId, message, messageRotated, hideId);
       const commit = state.commits[commitId];
       if (!commit) return state;
       return {
         commits: {
           ...state.commits,
-          [commitId]: { ...commit, message, messageRotated }
+          [commitId]: { ...commit, message, messageRotated, hideId }
         }
       };
     }),
@@ -398,6 +403,7 @@ export const useGitStore = create<GitState>()(
         activeBranch: mainId,
         commitSequence: 0,
         historyCurrentSequence: null,
+        // don't wipe layout on reset
       });
     },
 
@@ -412,6 +418,7 @@ export const useGitStore = create<GitState>()(
     branches: state.branches, 
     activeBranch: state.activeBranch,
     commitSequence: state.commitSequence,
+    layoutDirection: state.layoutDirection || 'horizontal',
   }),
 }),
 {
@@ -420,6 +427,7 @@ export const useGitStore = create<GitState>()(
         branches: state.branches,
         activeBranch: state.activeBranch,
         commitSequence: state.commitSequence,
+        layoutDirection: state.layoutDirection || 'horizontal',
       }),
       limit: 50,
     }

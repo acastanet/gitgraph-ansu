@@ -7,6 +7,7 @@ export type Commit = {
   position?: { x: number, y: number };
   parentColors?: Record<string, string>;
   messageRotated?: boolean;
+  hideId?: boolean;
 };
 
 export type Branch = {

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useGitStore } from '../store/useGitStore';
-import { Plus, GitMerge, GitBranch, Save, Upload, RotateCcw, Play } from 'lucide-react';
+import { Plus, GitMerge, GitBranch, Save, Upload, RotateCcw, Play, LayoutGrid, List } from 'lucide-react';
 import { Dialog } from './Dialog';
 
 export default function Toolbar() {
@@ -23,7 +23,9 @@ export default function Toolbar() {
     loadGraph, 
     reset,
     activeBranch,
-    branches 
+    branches,
+    layoutDirection,
+    setLayoutDirection
   } = useGitStore(state => state);
 
   const handleCreateCommit = () => {
@@ -81,36 +83,36 @@ export default function Toolbar() {
   const otherBranches = Object.values(branches).filter(b => b.id !== activeBranch);
 
   return (
-    <div className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0 relative z-10 shadow-sm">
-      <div className="flex items-center gap-4">
-        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-cyan-400 rounded-lg flex items-center justify-center">
+    <div className="min-h-16 py-3 gap-y-3 gap-x-4 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between px-4 shrink-0 relative z-40 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-cyan-400 rounded-lg flex items-center justify-center shrink-0">
           <GitBranch className="w-5 h-5 text-white" />
         </div>
-        <h1 className="text-lg font-semibold tracking-tight uppercase text-slate-800">
-          GitGraph <span className="text-cyan-600 text-xs font-mono ml-1">v0.2-classic</span>
+        <h1 className="text-lg font-semibold tracking-tight uppercase text-slate-800 shrink-0 hidden md:block">
+          GitGraph
         </h1>
-        <div className="h-6 w-px bg-slate-200 mx-2"></div>
+        <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block"></div>
         <button 
           onClick={() => setIsCommitOpen(true)}
-          className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-md text-sm font-medium transition-colors border border-slate-200 flex items-center gap-1.5 shadow-sm"
+          className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-md text-sm font-medium transition-colors border border-slate-200 flex items-center gap-1.5 shadow-sm"
         >
-          <Plus className="w-4 h-4" /> Commit
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Commit</span>
         </button>
         <button 
           onClick={() => setIsBranchOpen(true)}
-          className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-md text-sm font-medium transition-colors border border-slate-200 flex items-center gap-1.5 shadow-sm"
+          className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-md text-sm font-medium transition-colors border border-slate-200 flex items-center gap-1.5 shadow-sm"
         >
-          <GitBranch className="w-4 h-4" /> Branch
+          <GitBranch className="w-4 h-4" /> <span className="hidden sm:inline">Branch</span>
         </button>
         <button 
           onClick={() => setIsMergeOpen(true)}
-          className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-md text-sm font-bold transition-colors shadow-md flex items-center gap-1.5"
+          className="px-3 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-md text-sm font-bold transition-colors shadow-sm flex items-center gap-1.5"
         >
-          <GitMerge className="w-4 h-4" /> Merge
+          <GitMerge className="w-4 h-4" /> <span className="hidden sm:inline">Merge</span>
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="text-[10px] uppercase tracking-widest font-medium text-slate-500 mr-2 flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-200">
           HEAD: <span className="text-indigo-600 font-bold">{activeBranchName}</span>
         </div>
@@ -203,7 +205,7 @@ export default function Toolbar() {
                autoFocus
                value={branchName}
                onChange={e => setBranchName(e.target.value)}
-               placeholder="feature/new-ui"
+               placeholder="A"
                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
                onKeyDown={e => e.key === 'Enter' && handleCreateBranch()}
              />

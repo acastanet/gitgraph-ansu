@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { toSvg, toPng } from 'html-to-image';
-import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2, Undo, Redo, RefreshCcw } from 'lucide-react';
+import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2, Undo, Redo, RefreshCcw, LayoutGrid, List } from 'lucide-react';
 import { useGitStore } from '../store/useGitStore';
 import CommitNode from './CommitNode';
 import LaneNode from './LaneNode';
@@ -29,7 +29,7 @@ const nodeTypes = {
 };
 
 function GitGraphInner() {
-  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranchWithCommit, createBranch, updateBranchName } = useGitStore(state => state);
+  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranchWithCommit, createBranch, updateBranchName, layoutDirection, setLayoutDirection } = useGitStore(state => state);
   const resetStore = useGitStore(state => state.reset);
   const { undo, redo } = useGitStore.temporal.getState();
   
@@ -41,7 +41,7 @@ function GitGraphInner() {
   const [branchPrompt, setBranchPrompt] = useState<{isOpen: boolean, commitId: string, name: string}>({isOpen: false, commitId: '', name: ''});
   const [renameBranchPrompt, setRenameBranchPrompt] = useState<{isOpen: boolean, branchId: string, name: string}>({isOpen: false, branchId: '', name: ''});
   const [colorPrompt, setColorPrompt] = useState<{isOpen: boolean, edge: Edge | null, color: string}>({isOpen: false, edge: null, color: ''});
-  const [commitPrompt, setCommitPrompt] = useState<{isOpen: boolean, commitId: string, message: string, messageRotated: boolean}>({isOpen: false, commitId: '', message: '', messageRotated: false});
+  const [commitPrompt, setCommitPrompt] = useState<{isOpen: boolean, commitId: string, message: string, messageRotated: boolean, hideId: boolean}>({isOpen: false, commitId: '', message: '', messageRotated: false, hideId: false});
   const [savePromptOpen, setSavePromptOpen] = useState(false);
   const [helpPromptOpen, setHelpPromptOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,21 +169,22 @@ function GitGraphInner() {
   }, [nodes, fitView]);
 
   const onNodesChangeCustom = useCallback((changes: any[]) => {
-    // Lock Y axis when dragging so they stay on their lane
+    // Lock the appropriate axis when dragging so they stay on their lane
     const modifiedChanges = changes.map(c => {
       if (c.type === 'position' && c.position) {
         const node = nodes.find(n => n.id === c.id);
         if (node) {
+          const isVertical = layoutDirection === 'vertical';
           return {
             ...c,
-            position: { x: c.position.x, y: node.position.y }
+            position: isVertical ? { x: node.position.x, y: c.position.y } : { x: c.position.x, y: node.position.y }
           };
         }
       }
       return c;
     });
     onNodesChange(modifiedChanges);
-  }, [nodes, onNodesChange]);
+  }, [nodes, onNodesChange, layoutDirection]);
 
   const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
     console.log("GitGraph: onNodeDragStop", node);
@@ -271,29 +272,57 @@ function GitGraphInner() {
 
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
+    const isVertical = layoutDirection === 'vertical';
 
-    let maxCommitX = 0;
+    let maxCommitProgression = 0;
+    const branchRanges: Record<string, { minProp: number, maxProp: number }> = {};
+    const baseVerticalY = 800; // Baseline for vertical 
+
     commitList.forEach((commit, i) => {
-      const defaultX = i * 250 + 150;
-      const x = commit.position?.x ?? defaultX;
-      if (x > maxCommitX) maxCommitX = x;
+      let progression: number;
+      if (isVertical) {
+        const defaultY = baseVerticalY - i * 150;
+        const y = commit.position?.y ?? defaultY;
+        progression = y;
+        if (baseVerticalY - y > maxCommitProgression) maxCommitProgression = baseVerticalY - y;
+      } else {
+        const defaultX = i * 250 + 150;
+        const x = commit.position?.x ?? defaultX;
+        progression = x;
+        if (x > maxCommitProgression) maxCommitProgression = x;
+      }
+
+      if (!branchRanges[commit.branch]) {
+        branchRanges[commit.branch] = { minProp: progression, maxProp: progression };
+      } else {
+        branchRanges[commit.branch].minProp = Math.min(branchRanges[commit.branch].minProp, progression);
+        branchRanges[commit.branch].maxProp = Math.max(branchRanges[commit.branch].maxProp, progression);
+      }
     });
 
     const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
-    const graphWidth = Math.max(windowWidth, maxCommitX + 300);
+    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const graphSize = Math.max(isVertical ? windowHeight : windowWidth, maxCommitProgression + 300);
 
     branchList.forEach((branch, index) => {
+      const range = branchRanges[branch.id];
+      const minP = range ? range.minProp : (isVertical ? baseVerticalY - 150 : 150);
+      const maxP = range ? range.maxProp : (isVertical ? baseVerticalY - 150 : 150);
+      
+      const widthOrHeight = Math.max(150, maxP - minP);
+
       newNodes.push({
         id: `lane-${branch.id}`,
         type: 'lane',
-        position: { x: 0, y: index * 150 + 100 },
-        origin: [0, 0.5],
+        position: isVertical ? { x: index * 150 + 150, y: minP - 20 } : { x: minP, y: index * 150 + 100 },
+        origin: isVertical ? [0.5, 0] : [0, 0.5],
         data: {
           name: branch.name,
           color: branch.color,
-          width: graphWidth,
+          width: widthOrHeight + 40, // add a bit of padding to the end
           isFirst: index === 0,
           isLast: index === branchList.length - 1,
+          labelOffsetX: isVertical ? (maxLane - index) * 150 + 60 : (maxLane - index) * 150 + 60,
         },
         draggable: false,
         selectable: false,
@@ -301,13 +330,28 @@ function GitGraphInner() {
       });
     });
 
+    const maxLane = Math.max(0, ...Object.values(branchLanes));
+
     commitList.forEach((commit, i) => {
       const branch = branches[commit.branch];
       if (!branch) return;
 
       const lane = branchLanes[commit.branch];
-      const defaultY = lane * 150 + 100;
-      const defaultX = i * 250 + 150;
+      
+      let defaultY, defaultX, x, y;
+      let labelOffsetX;
+      if (isVertical) {
+        defaultX = lane * 150 + 150;
+        defaultY = baseVerticalY - i * 150;
+        x = defaultX; // locked to lane
+        y = commit.position?.y ?? defaultY; // movable in time
+        labelOffsetX = (maxLane - lane) * 150 + 60;
+      } else {
+        defaultX = i * 250 + 150;
+        defaultY = lane * 150 + 100;
+        x = commit.position?.x ?? defaultX; // movable in time
+        y = defaultY; // locked to lane
+      }
       
       const isHead = branch.head === commit.id;
       const isMerge = commit.parents.length > 1;
@@ -315,10 +359,7 @@ function GitGraphInner() {
       newNodes.push({
         id: commit.id,
         type: 'commit',
-        position: { 
-          x: commit.position?.x ?? defaultX, // x comes from store if dragged, or default
-          y: defaultY // y is always locked to the branch lane
-        }, 
+        position: { x, y }, 
         origin: [0.5, 0.5],
         draggable: true, // Allow draggable
         zIndex: 10,
@@ -331,6 +372,9 @@ function GitGraphInner() {
           isHead,
           isMerge,
           messageRotated: commit.messageRotated,
+          hideId: commit.hideId,
+          isVertical,
+          labelOffsetX,
         },
       });
 
@@ -415,7 +459,8 @@ function GitGraphInner() {
           isOpen: true, 
           commitId: node.id, 
           message: commit.message, 
-          messageRotated: commit.messageRotated || false 
+          messageRotated: commit.messageRotated || false,
+          hideId: commit.hideId || false,
         });
       }
     } else if (node.type === 'lane') {
@@ -462,6 +507,16 @@ function GitGraphInner() {
             <RefreshCcw className="w-5 h-5" />
           </button>
         </div>
+
+        <button
+          onClick={() => {
+            setLayoutDirection(layoutDirection === 'horizontal' ? 'vertical' : 'horizontal');
+          }}
+          className="flex items-center gap-2 py-2 px-3 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-md font-bold text-sm shadow-sm transition-all border border-purple-200"
+          title={layoutDirection === 'horizontal' ? "Passer en lecture verticale" : "Passer en lecture horizontale"}
+        >
+          {layoutDirection === 'horizontal' ? <List className="w-5 h-5" /> : <LayoutGrid className="w-5 h-5" />}
+        </button>
 
         <button
           onClick={handleFitViewCommits}
@@ -518,6 +573,8 @@ function GitGraphInner() {
         zoomOnDoubleClick={false}
         defaultViewport={{ x: 50, y: 50, zoom: 1 }}
         minZoom={0.2}
+        snapToGrid={true}
+        snapGrid={[25, 25]}
         className="bg-transparent font-sans"
       >
         <Controls className="fill-slate-700 bg-white border-slate-200" />
@@ -651,25 +708,37 @@ function GitGraphInner() {
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors placeholder-slate-400"
               onKeyDown={e => {
                 if (e.key === 'Enter') {
-                  useGitStore.getState().updateCommitMessage(commitPrompt.commitId, commitPrompt.message, commitPrompt.messageRotated);
+                  useGitStore.getState().updateCommitMessage(commitPrompt.commitId, commitPrompt.message, commitPrompt.messageRotated, commitPrompt.hideId);
                   setCommitPrompt({ ...commitPrompt, isOpen: false });
                 }
               }}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              id="rotate-label"
-              checked={commitPrompt.messageRotated}
-              onChange={e => setCommitPrompt({ ...commitPrompt, messageRotated: e.target.checked })}
-              className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500"
-            />
-            <label htmlFor="rotate-label" className="text-sm font-medium text-slate-700">Tourner l'étiquette à 45°</label>
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="rotate-label"
+                checked={commitPrompt.messageRotated}
+                onChange={e => setCommitPrompt({ ...commitPrompt, messageRotated: e.target.checked })}
+                className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500"
+              />
+              <label htmlFor="rotate-label" className="text-sm font-medium text-slate-700">Tourner l'étiquette à 45°</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="show-id"
+                checked={!commitPrompt.hideId}
+                onChange={e => setCommitPrompt({ ...commitPrompt, hideId: !e.target.checked })}
+                className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500"
+              />
+              <label htmlFor="show-id" className="text-sm font-medium text-slate-700">Afficher le numéro de commit</label>
+            </div>
           </div>
           <button 
             onClick={() => {
-              useGitStore.getState().updateCommitMessage(commitPrompt.commitId, commitPrompt.message, commitPrompt.messageRotated);
+              useGitStore.getState().updateCommitMessage(commitPrompt.commitId, commitPrompt.message, commitPrompt.messageRotated, commitPrompt.hideId);
               setCommitPrompt({ ...commitPrompt, isOpen: false });
             }}
             className="w-full py-2 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 shadow-sm transition-colors"
