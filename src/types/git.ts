@@ -16,6 +16,7 @@ export type Branch = {
   head: string | null;
   color: string;
   order?: number;
+  customLaneIndex?: number;
 };
 
 export type GitGraphExport = {

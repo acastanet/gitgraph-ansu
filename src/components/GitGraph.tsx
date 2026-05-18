@@ -169,16 +169,28 @@ function GitGraphInner() {
   }, [nodes, fitView]);
 
   const onNodesChangeCustom = useCallback((changes: any[]) => {
-    // Lock the appropriate axis when dragging so they stay on their lane
     const modifiedChanges = changes.map(c => {
       if (c.type === 'position' && c.position) {
         const node = nodes.find(n => n.id === c.id);
         if (node) {
           const isVertical = layoutDirection === 'vertical';
-          return {
-            ...c,
-            position: isVertical ? { x: node.position.x, y: c.position.y } : { x: c.position.x, y: node.position.y }
-          };
+          if (node.type === 'lane') {
+            // Dragging lane node:
+            // In vertical: Y coordinate is locked, X is free to move between columns.
+            // In horizontal: X coordinate is locked, Y is free to move between rows.
+            return {
+              ...c,
+              position: isVertical ? { x: c.position.x, y: node.position.y } : { x: node.position.x, y: c.position.y }
+            };
+          } else {
+            // Dragging commit node:
+            // In vertical: X coordinate is locked to lane, Y is free (time).
+            // In horizontal: Y coordinate is locked to lane, X is free (time).
+            return {
+              ...c,
+              position: isVertical ? { x: node.position.x, y: c.position.y } : { x: c.position.x, y: node.position.y }
+            };
+          }
         }
       }
       return c;
@@ -190,8 +202,15 @@ function GitGraphInner() {
     console.log("GitGraph: onNodeDragStop", node);
     if (node.type === 'commit') {
       updateCommitPosition(node.id, { x: node.position.x, y: node.position.y });
+    } else if (node.type === 'lane') {
+      const branchId = node.id.replace('lane-', '');
+      const isVertical = layoutDirection === 'vertical';
+      const targetLane = isVertical
+        ? Math.max(0, Math.round((node.position.x - 100) / 90))
+        : Math.max(0, Math.round((node.position.y - 80) / 80));
+      useGitStore.getState().setBranchLaneIndex(branchId, targetLane);
     }
-  }, [updateCommitPosition]);
+  }, [updateCommitPosition, layoutDirection]);
 
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.react-flow__node-commit')) {
@@ -209,20 +228,74 @@ function GitGraphInner() {
       return a.name.localeCompare(b.name);
     });
 
-    // Determine target branch lane
-    // Each lane is at y = index * 150 + 100
-    // So index is roughly (y - 100) / 150.
-    // If we click exactly on y=250, it is 150 above 100, which is lane 1.
-    // Let's broaden the hit area so half above and half below snaps to the nearest lane.
-    const branchIndex = Math.max(0, Math.round((position.y - 100) / 150));
+    const isVertical = layoutDirection === 'vertical';
+    const clickedLane = isVertical
+      ? Math.max(0, Math.round((position.x - 100) / 90))
+      : Math.max(0, Math.round((position.y - 80) / 80));
+
+    // Calculate branchRanges using commits
+    let commitList = Object.values(commits).sort((a, b) => a.timestamp - b.timestamp);
+    if (historyCurrentSequence !== null) {
+      commitList = commitList.slice(0, historyCurrentSequence);
+    }
+    const branchRanges: Record<string, { minProp: number, maxProp: number }> = {};
+    const baseVerticalY = 800;
     
-    if (branchIndex < branchList.length) {
-      const targetBranch = branchList[branchIndex];
-      createCommitAt(targetBranch.id, position);
+    commitList.forEach((commit, i) => {
+      let progression: number;
+      if (isVertical) {
+        progression = commit.position?.y ?? (baseVerticalY - i * 150);
+      } else {
+        progression = commit.position?.x ?? (i * 250 + 150);
+      }
+      if (!branchRanges[commit.branch]) {
+        branchRanges[commit.branch] = { minProp: progression, maxProp: progression };
+      } else {
+        branchRanges[commit.branch].minProp = Math.min(branchRanges[commit.branch].minProp, progression);
+        branchRanges[commit.branch].maxProp = Math.max(branchRanges[commit.branch].maxProp, progression);
+      }
+    });
+
+    // Mapped branches to lanes (manual alignment, not automatic!)
+    const branchLanes: Record<string, number> = {};
+    let laneCounter = 0;
+    branchList.forEach((branch) => {
+      if (branch.customLaneIndex !== undefined) {
+        branchLanes[branch.id] = branch.customLaneIndex;
+      } else {
+        if (branch.name === 'main') {
+          branchLanes[branch.id] = 0;
+        } else {
+          if (laneCounter === 0) laneCounter = 1;
+          branchLanes[branch.id] = laneCounter;
+          laneCounter++;
+        }
+      }
+    });
+
+    const targetBranches = branchList.filter(b => branchLanes[b.id] === clickedLane);
+    
+    if (targetBranches.length > 0) {
+      // Find the branch whose range is closest to the click coordinate
+      let closestBranch = targetBranches[0];
+      let minDistance = Infinity;
+      targetBranches.forEach(b => {
+        const range = branchRanges[b.id];
+        const minP = range ? range.minProp : (isVertical ? baseVerticalY - 150 : 150);
+        const maxP = range ? range.maxProp : (isVertical ? baseVerticalY - 150 : 150);
+        const center = (minP + maxP) / 2;
+        const clickedProp = isVertical ? position.y : position.x;
+        const dist = Math.abs(clickedProp - center);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestBranch = b;
+        }
+      });
+      createCommitAt(closestBranch.id, position);
     } else {
       createBranchWithCommit(position);
     }
-  }, [screenToFlowPosition, branches, createCommitAt, createBranchWithCommit]);
+  }, [screenToFlowPosition, branches, commits, historyCurrentSequence, createCommitAt, createBranchWithCommit, layoutDirection]);
 
   const onPaneClick = useCallback(
     (e: React.MouseEvent) => {
@@ -262,21 +335,13 @@ function GitGraphInner() {
       if (b.name === 'main') return 1;
       return a.name.localeCompare(b.name);
     });
-    
-    // Create a mapping from branch ID to an X coordinate lane
-    // stable sorting of branch list based on something. Let's just use array index for now.
-    const branchLanes: Record<string, number> = {};
-    branchList.forEach((b, index) => {
-      branchLanes[b.id] = index;
-    });
 
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
     const isVertical = layoutDirection === 'vertical';
+    const baseVerticalY = 800; // Baseline for vertical 
 
+    // 1. Calculate branchRanges using commits
     let maxCommitProgression = 0;
     const branchRanges: Record<string, { minProp: number, maxProp: number }> = {};
-    const baseVerticalY = 800; // Baseline for vertical 
 
     commitList.forEach((commit, i) => {
       let progression: number;
@@ -300,38 +365,67 @@ function GitGraphInner() {
       }
     });
 
-    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
-    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const graphSize = Math.max(isVertical ? windowHeight : windowWidth, maxCommitProgression + 300);
+    // 2. Assign branches to lanes (columns/rows) - manual alignment, not automatic!
+    // LANE_SPACING_VERTICAL = 90 (narrow/tight lane spacing)
+    // LANE_SPACING_HORIZONTAL = 80 (tight horizontal spacing)
+    const branchLanes: Record<string, number> = {};
+    let laneCounter = 0;
+    branchList.forEach((branch) => {
+      if (branch.customLaneIndex !== undefined) {
+        branchLanes[branch.id] = branch.customLaneIndex;
+      } else {
+        if (branch.name === 'main') {
+          branchLanes[branch.id] = 0;
+        } else {
+          if (laneCounter === 0) laneCounter = 1;
+          branchLanes[branch.id] = laneCounter;
+          laneCounter++;
+        }
+      }
+    });
 
-    branchList.forEach((branch, index) => {
+    const maxLane = Math.max(0, ...Object.values(branchLanes));
+
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+
+    // 3. Render branch lanes with precise start and end coordinates
+    branchList.forEach((branch) => {
+      const lane = branchLanes[branch.id];
       const range = branchRanges[branch.id];
+      
       const minP = range ? range.minProp : (isVertical ? baseVerticalY - 150 : 150);
       const maxP = range ? range.maxProp : (isVertical ? baseVerticalY - 150 : 150);
       
       const widthOrHeight = Math.max(150, maxP - minP);
+      // Lane line matches the branch's active range precisely
+      const laneWidthOrHeight = isVertical 
+        ? (range ? Math.max(150, range.maxProp - range.minProp) + 100 : 150)
+        : widthOrHeight + 100;
+
+      const laneX = isVertical ? lane * 90 + 100 : minP - 70;
+      const laneY = isVertical ? minP - 70 : lane * 80 + 80;
 
       newNodes.push({
         id: `lane-${branch.id}`,
         type: 'lane',
-        position: isVertical ? { x: index * 150 + 150, y: minP - 20 } : { x: minP, y: index * 150 + 100 },
+        position: { x: laneX, y: laneY },
         origin: isVertical ? [0.5, 0] : [0, 0.5],
         data: {
           name: branch.name,
           color: branch.color,
-          width: widthOrHeight + 40, // add a bit of padding to the end
-          isFirst: index === 0,
-          isLast: index === branchList.length - 1,
-          labelOffsetX: isVertical ? (maxLane - index) * 150 + 60 : (maxLane - index) * 150 + 60,
+          width: laneWidthOrHeight,
+          isFirst: lane === 0,
+          isLast: lane === maxLane,
+          labelOffsetX: isVertical ? 0 : (maxLane - lane) * 80 + 60,
         },
-        draggable: false,
+        draggable: branch.name !== 'main',
         selectable: false,
         zIndex: 0, 
       });
     });
 
-    const maxLane = Math.max(0, ...Object.values(branchLanes));
-
+    // 4. Render commit nodes
     commitList.forEach((commit, i) => {
       const branch = branches[commit.branch];
       if (!branch) return;
@@ -341,16 +435,17 @@ function GitGraphInner() {
       let defaultY, defaultX, x, y;
       let labelOffsetX;
       if (isVertical) {
-        defaultX = lane * 150 + 150;
+        defaultX = lane * 90 + 100;
         defaultY = baseVerticalY - i * 150;
-        x = defaultX; // locked to lane
+        x = defaultX; // locked to lane column
         y = commit.position?.y ?? defaultY; // movable in time
-        labelOffsetX = (maxLane - lane) * 150 + 60;
+        labelOffsetX = (maxLane - lane) * 90 + 60;
       } else {
         defaultX = i * 250 + 150;
-        defaultY = lane * 150 + 100;
+        defaultY = lane * 80 + 80;
         x = commit.position?.x ?? defaultX; // movable in time
-        y = defaultY; // locked to lane
+        y = defaultY; // locked to lane row
+        labelOffsetX = 0;
       }
       
       const isHead = branch.head === commit.id;
@@ -361,7 +456,7 @@ function GitGraphInner() {
         type: 'commit',
         position: { x, y }, 
         origin: [0.5, 0.5],
-        draggable: true, // Allow draggable
+        draggable: true,
         zIndex: 10,
         data: {
           id: commit.id,
@@ -402,7 +497,7 @@ function GitGraphInner() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [commits, branches, setNodes, setEdges]);
+  }, [commits, branches, setNodes, setEdges, layoutDirection]);
 
 
   const onConnect = useCallback(
@@ -643,6 +738,9 @@ function GitGraphInner() {
               }}
             />
           </div>
+
+          {/* Column/Lane position managed visually via Drag & Drop on the head circle */}
+
           <button 
             onClick={() => {
               if (renameBranchPrompt.name) {

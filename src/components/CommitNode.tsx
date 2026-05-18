@@ -46,10 +46,13 @@ const CommitNode = ({ data }: CommitNodeProps) => {
           )}
           style={data.isVertical ? { left: data.labelOffsetX !== undefined ? data.labelOffsetX : 32 } : undefined}
         >
-          <div className={cn(
-            "bg-white/95 backdrop-blur-md px-3 py-1.5 rounded border border-slate-200 shadow-sm flex flex-col transition-all",
-            (data.messageRotated || data.isVertical) ? "items-start" : "items-center"
-          )}>
+          <div 
+            className={cn(
+              "bg-white/95 backdrop-blur-md px-3 py-1.5 rounded border border-slate-200 border-l-4 shadow-sm flex flex-col transition-all",
+              (data.messageRotated || data.isVertical) ? "items-start" : "items-center"
+            )}
+            style={{ borderLeftColor: data.color }}
+          >
             <div className="flex items-center gap-2">
               {!isMessageEmpty && <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{data.message}</span>}
             </div>

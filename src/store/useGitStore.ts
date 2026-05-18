@@ -34,6 +34,7 @@ interface GitState {
   removeParentFromCommit: (childId: string, parentId: string) => void;
   updateEdgeColor: (childId: string, parentId: string, color: string) => void;
   updateBranchName: (branchId: string, name: string) => void;
+  setBranchLaneIndex: (branchId: string, laneIndex: number | null) => void;
   moveBranch: (branchId: string, direction: 'up' | 'down') => void;
   deleteCommit: (commitId: string) => void;
   createCommitAt: (branchId: string, position: { x: number, y: number }) => void;
@@ -310,6 +311,21 @@ export const useGitStore = create<GitState>()(
         branches: {
           ...state.branches,
           [branchId]: { ...branch, name }
+        }
+      };
+    }),
+
+    setBranchLaneIndex: (branchId, laneIndex) => set((state) => {
+      console.log("GitStore: setBranchLaneIndex", branchId, laneIndex);
+      const branch = state.branches[branchId];
+      if (!branch) return state;
+      return {
+        branches: {
+          ...state.branches,
+          [branchId]: { 
+            ...branch, 
+            customLaneIndex: laneIndex !== null ? laneIndex : undefined 
+          }
         }
       };
     }),
