@@ -20,7 +20,8 @@ export interface CommitNodeProps {
 
 const CommitNode = ({ data }: CommitNodeProps) => {
   const isMessageEmpty = !data.message || data.message.trim() === '';
-  const showLabel = !isMessageEmpty || !data.hideId;
+  const showId = data.hideId === false;
+  const showLabel = !isMessageEmpty || showId;
 
   return (
     <div className="relative group flex items-center justify-center pointer-events-auto" style={{ width: 32, height: 32 }}>
@@ -56,7 +57,7 @@ const CommitNode = ({ data }: CommitNodeProps) => {
             <div className="flex items-center gap-2">
               {!isMessageEmpty && <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{data.message}</span>}
             </div>
-            {!data.hideId && (
+            {showId && (
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1 rounded">{data.id}</span>
               </div>

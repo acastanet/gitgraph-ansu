@@ -420,7 +420,7 @@ function GitGraphInner() {
           labelOffsetX: isVertical ? 0 : (maxLane - lane) * 80 + 60,
         },
         draggable: branch.name !== 'main',
-        selectable: false,
+        selectable: branch.name !== 'main',
         zIndex: 0, 
       });
     });
@@ -467,7 +467,7 @@ function GitGraphInner() {
           isHead,
           isMerge,
           messageRotated: commit.messageRotated,
-          hideId: commit.hideId,
+          hideId: commit.hideId !== false,
           isVertical,
           labelOffsetX,
         },
@@ -519,6 +519,9 @@ function GitGraphInner() {
     deletedNodes.forEach(node => {
       if (node.type === 'commit') {
         useGitStore.getState().deleteCommit(node.id);
+      } else if (node.type === 'lane') {
+        const branchId = node.id.replace('lane-', '');
+        useGitStore.getState().deleteBranch(branchId);
       }
     });
   }, []);
@@ -890,7 +893,9 @@ function GitGraphInner() {
             <li><strong>Double-clic sur le début d'une branche (ligne de vie)</strong> : Créer un commit sur cette branche.</li>
             <li><strong>Double-clic sur un commit</strong> : Modifier le message et l'orientation de l'étiquette.</li>
             <li><strong>Clic-droit sur un commit</strong> : Créer une nouvelle branche à partir de ce commit.</li>
-            <li><strong>Clic-droit sur le début d'une branche</strong> : Renommer la branche.</li>
+            <li><strong>Clic-droit sur l'étiquette d'une branche</strong> : Renommer la branche.</li>
+            <li><strong>Glisser-déposer de l'étiquette d'une branche</strong> : Déplacer la branche (réordonner les lignes).</li>
+            <li><strong>Supprimer une branche</strong> : Cliquez sur l'icône de corbeille (🗑️) sur son étiquette ou sélectionnez l'étiquette et appuyez sur la touche <kbd className="px-1.5 py-0.5 text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-200 rounded-md shadow-sm">Suppr</kbd> / <kbd className="px-1.5 py-0.5 text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-200 rounded-md shadow-sm">Retour arrière</kbd>.</li>
             <li><strong>Glisser-déposer d'un commit à un autre</strong> : Ajouter un parent (fusion ou lien de validation).</li>
             <li><strong>Clic-gauche sur un lien/flèche</strong> : Changer la couleur du lien.</li>
           </ul>

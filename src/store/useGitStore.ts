@@ -37,6 +37,7 @@ interface GitState {
   setBranchLaneIndex: (branchId: string, laneIndex: number | null) => void;
   moveBranch: (branchId: string, direction: 'up' | 'down') => void;
   deleteCommit: (commitId: string) => void;
+  deleteBranch: (branchId: string) => void;
   createCommitAt: (branchId: string, position: { x: number, y: number }) => void;
   createBranchWithCommit: (position: { x: number, y: number }) => void;
   loadGraph: (data: GitGraphExport) => void;
@@ -76,7 +77,7 @@ export const useGitStore = create<GitState>()(
     activeBranch: initialBranchId,
     commitSequence: 0,
     historyCurrentSequence: null,
-    layoutDirection: 'horizontal',
+    layoutDirection: 'vertical',
 
     setLayoutDirection: (layout) => set({ layoutDirection: layout }),
 
@@ -114,6 +115,7 @@ export const useGitStore = create<GitState>()(
         parents: branch.head ? [branch.head] : [],
         branch: branch.id,
         timestamp: Date.now(),
+        hideId: true,
         ...(newX !== undefined ? { position: { x: newX, y: newY ?? 0 } } : {})
       };
 
@@ -140,6 +142,7 @@ export const useGitStore = create<GitState>()(
         parents: branch.head ? [branch.head] : [],
         branch: branch.id,
         timestamp: Date.now(),
+        hideId: true,
         position
       };
 
@@ -174,6 +177,7 @@ export const useGitStore = create<GitState>()(
         parents: [],
         branch: branchId,
         timestamp: Date.now(),
+        hideId: true,
         position
       };
 
@@ -395,6 +399,54 @@ export const useGitStore = create<GitState>()(
       return { commits: newCommits, branches: newBranches };
     }),
 
+    deleteBranch: (branchId) => set((state) => {
+      console.log("GitStore: deleteBranch", branchId);
+      const branch = state.branches[branchId];
+      if (!branch || branch.name === 'main') return state;
+
+      const newBranches = { ...state.branches };
+      delete newBranches[branchId];
+
+      const commitsToDelete = Object.values(state.commits)
+        .filter(c => c.branch === branchId)
+        .map(c => c.id);
+
+      const newCommits = { ...state.commits };
+      commitsToDelete.forEach(commitId => {
+        delete newCommits[commitId];
+      });
+
+      // Remove deleted commits from parent lists
+      Object.keys(newCommits).forEach(id => {
+        const commit = newCommits[id];
+        const filteredParents = commit.parents.filter(p => !commitsToDelete.includes(p));
+        if (filteredParents.length !== commit.parents.length) {
+          newCommits[id] = {
+            ...commit,
+            parents: filteredParents
+          };
+        }
+      });
+
+      // Adjust active branch if it was deleted
+      let newActiveBranch = state.activeBranch;
+      if (state.activeBranch === branchId) {
+        const mainBranch = Object.values(newBranches).find(b => b.name === 'main');
+        if (mainBranch) {
+          newActiveBranch = mainBranch.id;
+        } else {
+          const firstBranch = Object.keys(newBranches)[0];
+          newActiveBranch = firstBranch || null;
+        }
+      }
+
+      return {
+        branches: newBranches,
+        commits: newCommits,
+        activeBranch: newActiveBranch
+      };
+    }),
+
     loadGraph: (data) => set({ ...data }),
 
     getSavedGraph: () => {
@@ -434,7 +486,7 @@ export const useGitStore = create<GitState>()(
     branches: state.branches, 
     activeBranch: state.activeBranch,
     commitSequence: state.commitSequence,
-    layoutDirection: state.layoutDirection || 'horizontal',
+    layoutDirection: state.layoutDirection || 'vertical',
   }),
 }),
 {
@@ -443,7 +495,7 @@ export const useGitStore = create<GitState>()(
         branches: state.branches,
         activeBranch: state.activeBranch,
         commitSequence: state.commitSequence,
-        layoutDirection: state.layoutDirection || 'horizontal',
+        layoutDirection: state.layoutDirection || 'vertical',
       }),
       limit: 50,
     }
