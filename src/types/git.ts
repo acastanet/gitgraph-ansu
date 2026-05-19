@@ -17,6 +17,7 @@ export type Branch = {
   color: string;
   order?: number;
   customLaneIndex?: number;
+  customEndPosition?: number; // explicit lane terminator (Y in vertical, X in horizontal)
 };
 
 export type GitGraphExport = {

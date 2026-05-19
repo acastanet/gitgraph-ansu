@@ -1,0 +1,424 @@
+{
+  "commits": {
+    "8879644e": {
+      "id": "8879644e",
+      "message": "1ère études",
+      "parents": [
+        "04bbe89a"
+      ],
+      "branch": "9ee638e6-a76c-44c4-a240-5b432e7fa5c2",
+      "timestamp": 1779055004808,
+      "position": {
+        "x": 291,
+        "y": 741
+      },
+      "messageRotated": false,
+      "hideId": true
+    },
+    "fed88661": {
+      "id": "fed88661",
+      "message": "Expé oct-25",
+      "parents": [
+        "9cb0e78e"
+      ],
+      "branch": "02974551-43e2-42db-ad84-6f45fd729f8f",
+      "timestamp": 1779109995463,
+      "position": {
+        "x": 141,
+        "y": 666
+      },
+      "messageRotated": false,
+      "hideId": true
+    },
+    "a0363feb": {
+      "id": "a0363feb",
+      "message": "Lancement sept 25",
+      "parents": [
+        "c674cc13"
+      ],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779138250864,
+      "hideId": true,
+      "position": {
+        "x": 91,
+        "y": 641
+      },
+      "messageRotated": false
+    },
+    "fa6746e7": {
+      "id": "fa6746e7",
+      "message": "1ère communication",
+      "parents": [],
+      "branch": "818a1dd6-4e9b-4e4b-861d-513b20206d9b",
+      "timestamp": 1779138561373,
+      "hideId": true,
+      "position": {
+        "x": 366,
+        "y": 766
+      },
+      "messageRotated": false
+    },
+    "da909dbd": {
+      "id": "da909dbd",
+      "message": "Premiers exemples",
+      "parents": [
+        "08308009"
+      ],
+      "branch": "bc3e6207-5838-41e0-9df5-3d0766c6f3be",
+      "timestamp": 1779138634924,
+      "hideId": true,
+      "position": {
+        "x": 266,
+        "y": 716
+      },
+      "messageRotated": false
+    },
+    "c616cce6": {
+      "id": "c616cce6",
+      "message": "Prompt initial",
+      "parents": [
+        "a6bacd21"
+      ],
+      "branch": "354bfdd8-b021-4ef1-a89d-62ffe40dea3e",
+      "timestamp": 1779138992560,
+      "hideId": true,
+      "position": {
+        "x": 216,
+        "y": 691
+      },
+      "messageRotated": false
+    },
+    "08e5df7f": {
+      "id": "08e5df7f",
+      "message": "",
+      "parents": [
+        "fa6746e7"
+      ],
+      "branch": "818a1dd6-4e9b-4e4b-861d-513b20206d9b",
+      "timestamp": 1779139219632,
+      "hideId": true,
+      "position": {
+        "x": 341,
+        "y": 1266
+      },
+      "messageRotated": false
+    },
+    "c674cc13": {
+      "id": "c674cc13",
+      "message": "Rendre copie",
+      "parents": [],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779140078387,
+      "hideId": true,
+      "position": {
+        "x": 91,
+        "y": 841
+      },
+      "messageRotated": false
+    },
+    "571f36ab": {
+      "id": "571f36ab",
+      "message": "Version 3.5 avril",
+      "parents": [
+        "c674cc13"
+      ],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779140222778,
+      "hideId": true,
+      "position": {
+        "x": 141,
+        "y": 1016
+      },
+      "messageRotated": false
+    },
+    "9cb0e78e": {
+      "id": "9cb0e78e",
+      "message": "Retex 1 Olivier",
+      "parents": [
+        "c674cc13"
+      ],
+      "branch": "02974551-43e2-42db-ad84-6f45fd729f8f",
+      "timestamp": 1779140564289,
+      "hideId": true,
+      "position": {
+        "x": 116,
+        "y": 791
+      },
+      "messageRotated": false,
+      "parentColors": {
+        "c674cc13": "#00B33C"
+      }
+    },
+    "c0334680": {
+      "id": "c0334680",
+      "message": "Retex général",
+      "parents": [
+        "9cb0e78e",
+        "571f36ab"
+      ],
+      "branch": "02974551-43e2-42db-ad84-6f45fd729f8f",
+      "timestamp": 1779140702550,
+      "hideId": true,
+      "position": {
+        "x": 141,
+        "y": 941
+      },
+      "messageRotated": false,
+      "parentColors": {
+        "571f36ab": "#00B33C"
+      }
+    },
+    "08308009": {
+      "id": "08308009",
+      "message": "Remonté 1",
+      "parents": [
+        "d9eb7ae1"
+      ],
+      "branch": "bc3e6207-5838-41e0-9df5-3d0766c6f3be",
+      "timestamp": 1779141256053,
+      "hideId": true,
+      "position": {
+        "x": 266,
+        "y": 1091
+      },
+      "messageRotated": false,
+      "parentColors": {
+        "d9eb7ae1": "#8A2BE2"
+      }
+    },
+    "d9eb7ae1": {
+      "id": "d9eb7ae1",
+      "message": "+ routage",
+      "parents": [
+        "571f36ab"
+      ],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779141327315,
+      "hideId": true,
+      "position": {
+        "x": 91,
+        "y": 1166
+      },
+      "messageRotated": false
+    },
+    "0748c80d": {
+      "id": "0748c80d",
+      "message": "",
+      "parents": [
+        "08308009"
+      ],
+      "branch": "bc3e6207-5838-41e0-9df5-3d0766c6f3be",
+      "timestamp": 1779141442281,
+      "hideId": true,
+      "position": {
+        "x": 241,
+        "y": 1266
+      },
+      "messageRotated": false
+    },
+    "04bbe89a": {
+      "id": "04bbe89a",
+      "message": "1ères recherches",
+      "parents": [
+        "560db6aa"
+      ],
+      "branch": "9ee638e6-a76c-44c4-a240-5b432e7fa5c2",
+      "timestamp": 1779141506710,
+      "hideId": true,
+      "position": {
+        "x": 291,
+        "y": 816
+      },
+      "messageRotated": false
+    },
+    "a6bacd21": {
+      "id": "a6bacd21",
+      "message": "meta prompt",
+      "parents": [
+        "861ee33d"
+      ],
+      "branch": "354bfdd8-b021-4ef1-a89d-62ffe40dea3e",
+      "timestamp": 1779141540826,
+      "hideId": true,
+      "position": {
+        "x": 191,
+        "y": 1041
+      },
+      "parentColors": {
+        "d9eb7ae1": "#f78de4",
+        "861ee33d": "#f78de4"
+      },
+      "messageRotated": false
+    },
+    "ef2d3ab5": {
+      "id": "ef2d3ab5",
+      "message": "",
+      "parents": [
+        "a6bacd21"
+      ],
+      "branch": "354bfdd8-b021-4ef1-a89d-62ffe40dea3e",
+      "timestamp": 1779141630252,
+      "hideId": true,
+      "position": {
+        "x": 191,
+        "y": 1266
+      },
+      "messageRotated": false
+    },
+    "4d3ae005": {
+      "id": "4d3ae005",
+      "message": "Réunion IMSIC",
+      "parents": [
+        "04bbe89a"
+      ],
+      "branch": "9ee638e6-a76c-44c4-a240-5b432e7fa5c2",
+      "timestamp": 1779141742079,
+      "hideId": true,
+      "position": {
+        "x": 291,
+        "y": 1216
+      },
+      "messageRotated": false
+    },
+    "632a8cce": {
+      "id": "632a8cce",
+      "message": "",
+      "parents": [
+        "4d3ae005"
+      ],
+      "branch": "9ee638e6-a76c-44c4-a240-5b432e7fa5c2",
+      "timestamp": 1779141874091,
+      "hideId": true,
+      "position": {
+        "x": 291,
+        "y": 1266
+      },
+      "messageRotated": false
+    },
+    "560db6aa": {
+      "id": "560db6aa",
+      "message": "J2",
+      "parents": [],
+      "branch": "02974551-43e2-42db-ad84-6f45fd729f8f",
+      "timestamp": 1779141926424,
+      "hideId": true,
+      "position": {
+        "x": 166,
+        "y": 891
+      },
+      "messageRotated": false
+    },
+    "a5bba2eb": {
+      "id": "a5bba2eb",
+      "message": "",
+      "parents": [
+        "560db6aa"
+      ],
+      "branch": "02974551-43e2-42db-ad84-6f45fd729f8f",
+      "timestamp": 1779141995366,
+      "hideId": true,
+      "position": {
+        "x": 141,
+        "y": 1266
+      },
+      "messageRotated": false
+    },
+    "b9913c23": {
+      "id": "b9913c23",
+      "message": "",
+      "parents": [
+        "d9eb7ae1"
+      ],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779142042117,
+      "hideId": true,
+      "position": {
+        "x": 116,
+        "y": 1266
+      },
+      "messageRotated": false
+    },
+    "861ee33d": {
+      "id": "861ee33d",
+      "message": "+ meta-prompt",
+      "parents": [
+        "b9913c23",
+        "861ee33d"
+      ],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779143476308,
+      "hideId": true,
+      "position": {
+        "x": 116,
+        "y": 1216
+      },
+      "messageRotated": false
+    },
+    "eab4cfcb": {
+      "id": "eab4cfcb",
+      "message": "Update eab4cfcb",
+      "parents": [
+        "861ee33d"
+      ],
+      "branch": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "timestamp": 1779143548203,
+      "hideId": true,
+      "position": {
+        "x": 91,
+        "y": 1266
+      }
+    }
+  },
+  "branches": {
+    "bc3e6207-5838-41e0-9df5-3d0766c6f3be": {
+      "id": "bc3e6207-5838-41e0-9df5-3d0766c6f3be",
+      "name": "Cas d'usages",
+      "head": "0748c80d",
+      "color": "#8A2BE2",
+      "order": 2,
+      "customLaneIndex": 3
+    },
+    "9ee638e6-a76c-44c4-a240-5b432e7fa5c2": {
+      "id": "9ee638e6-a76c-44c4-a240-5b432e7fa5c2",
+      "name": "cadre théorique",
+      "head": "632a8cce",
+      "color": "#F2B705",
+      "order": 4,
+      "customLaneIndex": 4
+    },
+    "518c6d35-506c-4835-916b-89c4e2bc5f9d": {
+      "id": "518c6d35-506c-4835-916b-89c4e2bc5f9d",
+      "name": "AnSu",
+      "head": "eab4cfcb",
+      "color": "#FF6600",
+      "order": 5,
+      "customLaneIndex": 0
+    },
+    "02974551-43e2-42db-ad84-6f45fd729f8f": {
+      "id": "02974551-43e2-42db-ad84-6f45fd729f8f",
+      "name": "Expé sept 25",
+      "head": "a5bba2eb",
+      "color": "#00B33C",
+      "order": 5,
+      "customLaneIndex": 1
+    },
+    "818a1dd6-4e9b-4e4b-861d-513b20206d9b": {
+      "id": "818a1dd6-4e9b-4e4b-861d-513b20206d9b",
+      "name": "Communication",
+      "head": "08e5df7f",
+      "color": "#df4e72",
+      "order": 5,
+      "customLaneIndex": 5
+    },
+    "354bfdd8-b021-4ef1-a89d-62ffe40dea3e": {
+      "id": "354bfdd8-b021-4ef1-a89d-62ffe40dea3e",
+      "name": "Prompt ingénierie ",
+      "head": "ef2d3ab5",
+      "color": "#f78de4",
+      "order": 5,
+      "customLaneIndex": 2
+    }
+  },
+  "commitSequence": 58,
+  "activeBranch": "518c6d35-506c-4835-916b-89c4e2bc5f9d"
+}

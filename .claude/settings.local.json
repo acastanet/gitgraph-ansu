@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_ALX\\\\GitGraph\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\DEV_ALX\\\\GitGraph\" -Force | Where-Object {$_.Name -notlike \"node_modules\"} | Select-Object Name, PSIsContainer)",
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_ALX\\\\GitGraph\" -File)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

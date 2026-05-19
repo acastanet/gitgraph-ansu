@@ -19,77 +19,62 @@ import '@xyflow/react/dist/style.css';
 import { toSvg, toPng } from 'html-to-image';
 import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2, Undo, Redo, RefreshCcw, LayoutGrid, List } from 'lucide-react';
 import { useGitStore } from '../store/useGitStore';
+import { computeLayout, BASE_VERTICAL_Y, LANE_SPACING_VERTICAL, LANE_SPACING_HORIZONTAL, COMMIT_STEP_VERTICAL, COMMIT_STEP_HORIZONTAL, COMMIT_STEP_OFFSET_H } from '../lib/layout';
 import CommitNode from './CommitNode';
 import LaneNode from './LaneNode';
+import GitEdge from './GitEdge';
+import EndCapNode from './EndCapNode';
 import { Dialog } from './Dialog';
 
 const nodeTypes = {
   commit: CommitNode,
   lane: LaneNode,
+  endcap: EndCapNode,
+};
+
+const edgeTypes = {
+  gitEdge: GitEdge,
 };
 
 function GitGraphInner() {
-  const { commits, branches, mergeBranches, activeBranch, setActiveBranch, historyCurrentSequence, updateCommitPosition, addParentToCommit, createCommitAt, createBranchWithCommit, createBranch, updateBranchName, layoutDirection, setLayoutDirection } = useGitStore(state => state);
-  const resetStore = useGitStore(state => state.reset);
+  // Données réactives — sélecteurs ciblés
+  const commits = useGitStore(s => s.commits);
+  const branches = useGitStore(s => s.branches);
+  const activeBranch = useGitStore(s => s.activeBranch);
+  const historyCurrentSequence = useGitStore(s => s.historyCurrentSequence);
+  const layoutDirection = useGitStore(s => s.layoutDirection);
+  const branchLabelOrientation = useGitStore(s => s.branchLabelOrientation);
+
+  // Actions — références stables
+  const setActiveBranch = useGitStore(s => s.setActiveBranch);
+  const updateCommitPosition = useGitStore(s => s.updateCommitPosition);
+  const addParentToCommit = useGitStore(s => s.addParentToCommit);
+  const createCommitAt = useGitStore(s => s.createCommitAt);
+  const createBranchWithCommit = useGitStore(s => s.createBranchWithCommit);
+  const createBranch = useGitStore(s => s.createBranch);
+  const updateBranchName = useGitStore(s => s.updateBranchName);
+  const updateBranchColor = useGitStore(s => s.updateBranchColor);
+  const setLayoutDirection = useGitStore(s => s.setLayoutDirection);
+  const toggleBranchLabelOrientation = useGitStore(s => s.toggleBranchLabelOrientation);
+  const resetStore = useGitStore(s => s.reset);
   const { undo, redo } = useGitStore.temporal.getState();
-  
+
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { screenToFlowPosition, fitView, getNodes } = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  const [branchPrompt, setBranchPrompt] = useState<{isOpen: boolean, commitId: string, name: string}>({isOpen: false, commitId: '', name: ''});
-  const [renameBranchPrompt, setRenameBranchPrompt] = useState<{isOpen: boolean, branchId: string, name: string}>({isOpen: false, branchId: '', name: ''});
-  const [colorPrompt, setColorPrompt] = useState<{isOpen: boolean, edge: Edge | null, color: string}>({isOpen: false, edge: null, color: ''});
-  const [commitPrompt, setCommitPrompt] = useState<{isOpen: boolean, commitId: string, message: string, messageRotated: boolean, hideId: boolean}>({isOpen: false, commitId: '', message: '', messageRotated: false, hideId: false});
+  const [branchPrompt, setBranchPrompt] = useState<{ isOpen: boolean, commitId: string, name: string }>({ isOpen: false, commitId: '', name: '' });
+  const [renameBranchPrompt, setRenameBranchPrompt] = useState<{ isOpen: boolean, branchId: string, name: string, color: string }>({ isOpen: false, branchId: '', name: '', color: '' });
+  const [colorPrompt, setColorPrompt] = useState<{ isOpen: boolean, edge: Edge | null, color: string }>({ isOpen: false, edge: null, color: '' });
+  const [commitPrompt, setCommitPrompt] = useState<{ isOpen: boolean, commitId: string, message: string, messageRotated: boolean, hideId: boolean }>({ isOpen: false, commitId: '', message: '', messageRotated: false, hideId: false });
   const [savePromptOpen, setSavePromptOpen] = useState(false);
   const [helpPromptOpen, setHelpPromptOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [loadErrorOpen, setLoadErrorOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleExportSVG = useCallback(() => {
-    setSavePromptOpen(false);
-    setTimeout(() => {
-      const nodes = getNodes();
-      // If there are no nodes, just export the viewport
-      if (nodes.length === 0) return;
-
-      const nodesBounds = getNodesBounds(nodes);
-      const width = nodesBounds.width + 100; // Add some padding
-      const height = nodesBounds.height + 100;
-      
-      const transform = getViewportForBounds(
-        nodesBounds,
-        width,
-        height,
-        0.1,
-        2,
-        0
-      );
-
-      const el = document.querySelector('.react-flow__viewport') as HTMLElement;
-      if (!el) return;
-      
-      toSvg(el, {
-        backgroundColor: '#f8fafc',
-        width,
-        height,
-        style: {
-          width: width.toString(),
-          height: height.toString(),
-          transform: `translate(${transform.x + 50}px, ${transform.y + 50}px) scale(${transform.zoom})`,
-        },
-      }).then((dataUrl) => {
-        const a = document.createElement('a');
-        a.setAttribute('download', 'git-graph.svg');
-        a.setAttribute('href', dataUrl);
-        a.click();
-      }).catch((err) => {
-        console.error('Failed to export SVG', err);
-      });
-    }, 200);
-  }, [getNodes]);
-
-  const handleExportPNG = useCallback(() => {
+  const handleExportImage = useCallback((format: 'svg' | 'png') => {
     setSavePromptOpen(false);
     setTimeout(() => {
       const nodes = getNodes();
@@ -98,20 +83,14 @@ function GitGraphInner() {
       const nodesBounds = getNodesBounds(nodes);
       const width = nodesBounds.width + 100;
       const height = nodesBounds.height + 100;
-      
-      const transform = getViewportForBounds(
-        nodesBounds,
-        width,
-        height,
-        0.1,
-        2,
-        0
-      );
+
+      const transform = getViewportForBounds(nodesBounds, width, height, 0.1, 2, 0);
 
       const el = document.querySelector('.react-flow__viewport') as HTMLElement;
       if (!el) return;
 
-      toPng(el, {
+      const exportFn = format === 'svg' ? toSvg : toPng;
+      exportFn(el, {
         backgroundColor: '#f8fafc',
         width,
         height,
@@ -122,11 +101,11 @@ function GitGraphInner() {
         },
       }).then((dataUrl) => {
         const a = document.createElement('a');
-        a.setAttribute('download', 'git-graph.png');
+        a.setAttribute('download', `git-graph.${format}`);
         a.setAttribute('href', dataUrl);
         a.click();
       }).catch((err) => {
-        console.error('Failed to export PNG', err);
+        console.error(`Failed to export ${format.toUpperCase()}`, err);
       });
     }, 200);
   }, [getNodes]);
@@ -153,7 +132,7 @@ function GitGraphInner() {
           const content = e.target?.result as string;
           useGitStore.getState().loadGraph(JSON.parse(content));
         } catch (err) {
-          alert("Invalid JSON file");
+          setLoadErrorOpen(true);
         }
       };
       reader.readAsText(file);
@@ -182,6 +161,14 @@ function GitGraphInner() {
               ...c,
               position: isVertical ? { x: c.position.x, y: node.position.y } : { x: node.position.x, y: c.position.y }
             };
+          } else if (node.type === 'endcap') {
+            // Dragging endcap: locked to lane axis, free along time axis.
+            // In vertical: X locked, Y free.
+            // In horizontal: Y locked, X free.
+            return {
+              ...c,
+              position: isVertical ? { x: node.position.x, y: c.position.y } : { x: c.position.x, y: node.position.y }
+            };
           } else {
             // Dragging commit node:
             // In vertical: X coordinate is locked to lane, Y is free (time).
@@ -206,9 +193,14 @@ function GitGraphInner() {
       const branchId = node.id.replace('lane-', '');
       const isVertical = layoutDirection === 'vertical';
       const targetLane = isVertical
-        ? Math.max(0, Math.round((node.position.x - 100) / 90))
-        : Math.max(0, Math.round((node.position.y - 80) / 80));
+        ? Math.max(0, Math.round((node.position.x - 100) / LANE_SPACING_VERTICAL))
+        : Math.max(0, Math.round((node.position.y - 80) / LANE_SPACING_HORIZONTAL));
       useGitStore.getState().setBranchLaneIndex(branchId, targetLane);
+    } else if (node.type === 'endcap') {
+      const branchId = node.id.replace('endcap-', '');
+      const isVertical = layoutDirection === 'vertical';
+      const endPos = isVertical ? node.position.y : node.position.x;
+      useGitStore.getState().setBranchEndPosition(branchId, endPos);
     }
   }, [updateCommitPosition, layoutDirection]);
 
@@ -216,73 +208,27 @@ function GitGraphInner() {
     if ((e.target as HTMLElement).closest('.react-flow__node-commit')) {
       return; // Ignore double clicks on commit nodes
     }
-    
+
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    
-    const branchList = Object.values(branches).sort((a, b) => {
-      const orderA = a.order ?? 0;
-      const orderB = b.order ?? 0;
-      if (orderA !== orderB) return orderA - orderB;
-      if (a.name === 'main') return -1;
-      if (b.name === 'main') return 1;
-      return a.name.localeCompare(b.name);
-    });
 
-    const isVertical = layoutDirection === 'vertical';
+    const { commitList, branchList, branchRanges, branchLanes, isVertical } = computeLayout(
+      commits, branches, historyCurrentSequence, layoutDirection
+    );
+
     const clickedLane = isVertical
-      ? Math.max(0, Math.round((position.x - 100) / 90))
-      : Math.max(0, Math.round((position.y - 80) / 80));
-
-    // Calculate branchRanges using commits
-    let commitList = Object.values(commits).sort((a, b) => a.timestamp - b.timestamp);
-    if (historyCurrentSequence !== null) {
-      commitList = commitList.slice(0, historyCurrentSequence);
-    }
-    const branchRanges: Record<string, { minProp: number, maxProp: number }> = {};
-    const baseVerticalY = 800;
-    
-    commitList.forEach((commit, i) => {
-      let progression: number;
-      if (isVertical) {
-        progression = commit.position?.y ?? (baseVerticalY - i * 150);
-      } else {
-        progression = commit.position?.x ?? (i * 250 + 150);
-      }
-      if (!branchRanges[commit.branch]) {
-        branchRanges[commit.branch] = { minProp: progression, maxProp: progression };
-      } else {
-        branchRanges[commit.branch].minProp = Math.min(branchRanges[commit.branch].minProp, progression);
-        branchRanges[commit.branch].maxProp = Math.max(branchRanges[commit.branch].maxProp, progression);
-      }
-    });
-
-    // Mapped branches to lanes (manual alignment, not automatic!)
-    const branchLanes: Record<string, number> = {};
-    let laneCounter = 0;
-    branchList.forEach((branch) => {
-      if (branch.customLaneIndex !== undefined) {
-        branchLanes[branch.id] = branch.customLaneIndex;
-      } else {
-        if (branch.name === 'main') {
-          branchLanes[branch.id] = 0;
-        } else {
-          if (laneCounter === 0) laneCounter = 1;
-          branchLanes[branch.id] = laneCounter;
-          laneCounter++;
-        }
-      }
-    });
+      ? Math.max(0, Math.round((position.x - 100) / LANE_SPACING_VERTICAL))
+      : Math.max(0, Math.round((position.y - 80) / LANE_SPACING_HORIZONTAL));
 
     const targetBranches = branchList.filter(b => branchLanes[b.id] === clickedLane);
-    
+
     if (targetBranches.length > 0) {
       // Find the branch whose range is closest to the click coordinate
       let closestBranch = targetBranches[0];
       let minDistance = Infinity;
       targetBranches.forEach(b => {
         const range = branchRanges[b.id];
-        const minP = range ? range.minProp : (isVertical ? baseVerticalY - 150 : 150);
-        const maxP = range ? range.maxProp : (isVertical ? baseVerticalY - 150 : 150);
+        const minP = range ? range.minProp : (isVertical ? BASE_VERTICAL_Y - COMMIT_STEP_VERTICAL : COMMIT_STEP_OFFSET_H);
+        const maxP = range ? range.maxProp : (isVertical ? BASE_VERTICAL_Y - COMMIT_STEP_VERTICAL : COMMIT_STEP_OFFSET_H);
         const center = (minP + maxP) / 2;
         const clickedProp = isVertical ? position.y : position.x;
         const dist = Math.abs(clickedProp - center);
@@ -323,68 +269,9 @@ function GitGraphInner() {
 
   // Transform store data into React Flow nodes and edges
   useEffect(() => {
-    let commitList = Object.values(commits).sort((a, b) => a.timestamp - b.timestamp);
-    if (historyCurrentSequence !== null) {
-      commitList = commitList.slice(0, historyCurrentSequence);
-    }
-    const branchList = Object.values(branches).sort((a, b) => {
-      const orderA = a.order ?? 0;
-      const orderB = b.order ?? 0;
-      if (orderA !== orderB) return orderA - orderB;
-      if (a.name === 'main') return -1;
-      if (b.name === 'main') return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    const isVertical = layoutDirection === 'vertical';
-    const baseVerticalY = 800; // Baseline for vertical 
-
-    // 1. Calculate branchRanges using commits
-    let maxCommitProgression = 0;
-    const branchRanges: Record<string, { minProp: number, maxProp: number }> = {};
-
-    commitList.forEach((commit, i) => {
-      let progression: number;
-      if (isVertical) {
-        const defaultY = baseVerticalY - i * 150;
-        const y = commit.position?.y ?? defaultY;
-        progression = y;
-        if (baseVerticalY - y > maxCommitProgression) maxCommitProgression = baseVerticalY - y;
-      } else {
-        const defaultX = i * 250 + 150;
-        const x = commit.position?.x ?? defaultX;
-        progression = x;
-        if (x > maxCommitProgression) maxCommitProgression = x;
-      }
-
-      if (!branchRanges[commit.branch]) {
-        branchRanges[commit.branch] = { minProp: progression, maxProp: progression };
-      } else {
-        branchRanges[commit.branch].minProp = Math.min(branchRanges[commit.branch].minProp, progression);
-        branchRanges[commit.branch].maxProp = Math.max(branchRanges[commit.branch].maxProp, progression);
-      }
-    });
-
-    // 2. Assign branches to lanes (columns/rows) - manual alignment, not automatic!
-    // LANE_SPACING_VERTICAL = 90 (narrow/tight lane spacing)
-    // LANE_SPACING_HORIZONTAL = 80 (tight horizontal spacing)
-    const branchLanes: Record<string, number> = {};
-    let laneCounter = 0;
-    branchList.forEach((branch) => {
-      if (branch.customLaneIndex !== undefined) {
-        branchLanes[branch.id] = branch.customLaneIndex;
-      } else {
-        if (branch.name === 'main') {
-          branchLanes[branch.id] = 0;
-        } else {
-          if (laneCounter === 0) laneCounter = 1;
-          branchLanes[branch.id] = laneCounter;
-          laneCounter++;
-        }
-      }
-    });
-
-    const maxLane = Math.max(0, ...Object.values(branchLanes));
+    const { commitList, branchList, branchRanges, branchLanes, maxLane, isVertical } = computeLayout(
+      commits, branches, historyCurrentSequence, layoutDirection
+    );
 
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
@@ -393,17 +280,22 @@ function GitGraphInner() {
     branchList.forEach((branch) => {
       const lane = branchLanes[branch.id];
       const range = branchRanges[branch.id];
-      
-      const minP = range ? range.minProp : (isVertical ? baseVerticalY - 150 : 150);
-      const maxP = range ? range.maxProp : (isVertical ? baseVerticalY - 150 : 150);
-      
-      const widthOrHeight = Math.max(150, maxP - minP);
-      // Lane line matches the branch's active range precisely
-      const laneWidthOrHeight = isVertical 
-        ? (range ? Math.max(150, range.maxProp - range.minProp) + 100 : 150)
-        : widthOrHeight + 100;
 
-      const laneX = isVertical ? lane * 90 + 100 : minP - 70;
+      const minP = range ? range.minProp : (isVertical ? BASE_VERTICAL_Y - COMMIT_STEP_VERTICAL : COMMIT_STEP_OFFSET_H);
+      const rangeMaxP = range ? range.maxProp : (isVertical ? BASE_VERTICAL_Y - COMMIT_STEP_VERTICAL : COMMIT_STEP_OFFSET_H);
+
+      // Effective end of lane: commits range max, optionally extended by the
+      // user via the draggable end-cap (branch.customEndPosition).
+      const effectiveMaxP = branch.customEndPosition !== undefined
+        ? (isVertical
+            ? Math.max(rangeMaxP, branch.customEndPosition)
+            : Math.max(rangeMaxP, branch.customEndPosition))
+        : rangeMaxP;
+
+      const widthOrHeight = Math.max(COMMIT_STEP_VERTICAL, effectiveMaxP - minP);
+      const laneWidthOrHeight = widthOrHeight + 100;
+
+      const laneX = isVertical ? lane * 50 + 100 : minP - 70;
       const laneY = isVertical ? minP - 70 : lane * 80 + 80;
 
       newNodes.push({
@@ -417,44 +309,93 @@ function GitGraphInner() {
           width: laneWidthOrHeight,
           isFirst: lane === 0,
           isLast: lane === maxLane,
-          labelOffsetX: isVertical ? 0 : (maxLane - lane) * 80 + 60,
+          labelOffsetX: isVertical ? 0 : (maxLane - lane) * LANE_SPACING_HORIZONTAL + 60,
+          laneIndex: lane,
+          branchLabelOrientation,
         },
         draggable: branch.name !== 'main',
         selectable: branch.name !== 'main',
-        zIndex: 0, 
+        zIndex: 0,
       });
+
+      // 3b. Render draggable HEAD end-cap only when the lane is extended beyond the last commit
+      if (branch.customEndPosition !== undefined) {
+        const endCapPos = branch.customEndPosition;
+        const endCapX = isVertical ? lane * LANE_SPACING_VERTICAL + 100 : endCapPos;
+        const endCapY = isVertical ? endCapPos : lane * LANE_SPACING_HORIZONTAL + 80;
+
+        newNodes.push({
+          id: `endcap-${branch.id}`,
+          type: 'endcap',
+          position: { x: endCapX, y: endCapY },
+          origin: [0.5, 0.5],
+          data: {
+            color: branch.color,
+            branchName: branch.name,
+          },
+          draggable: true,
+          selectable: false,
+          zIndex: 6,
+        });
+      }
     });
 
     // 4. Render commit nodes
+    const LABEL_GRID_Y = 36; // Grille verticale plus resserrée
+    const LABEL_GRID_X = 150; // Espace horizontal garanti entre les étiquettes
+    const baseLabelX_global = maxLane * LANE_SPACING_VERTICAL + 170;
+    const placedLabels: { x: number, y: number }[] = [];
+
     commitList.forEach((commit, i) => {
       const branch = branches[commit.branch];
       if (!branch) return;
 
       const lane = branchLanes[commit.branch];
-      
+
       let defaultY, defaultX, x, y;
       let labelOffsetX;
+      let labelOffsetY;
+
       if (isVertical) {
-        defaultX = lane * 90 + 100;
-        defaultY = baseVerticalY - i * 150;
+        defaultX = lane * LANE_SPACING_VERTICAL + 100;
+        defaultY = BASE_VERTICAL_Y - i * COMMIT_STEP_VERTICAL;
         x = defaultX; // locked to lane column
         y = commit.position?.y ?? defaultY; // movable in time
-        labelOffsetX = (maxLane - lane) * 90 + 60;
+
+        let targetGlobalX = baseLabelX_global;
+        // Snap to grid ignoring sequence number, just pure Y visual coordinate
+        let targetGlobalY = Math.round(y / LABEL_GRID_Y) * LABEL_GRID_Y;
+
+        let hasCollision = true;
+        while (hasCollision) {
+          hasCollision = placedLabels.some(
+            placed => placed.x === targetGlobalX && placed.y === targetGlobalY
+          );
+          if (hasCollision) {
+            targetGlobalX += LABEL_GRID_X; // Push label to the right (côte à côte)
+          }
+        }
+
+        placedLabels.push({ x: targetGlobalX, y: targetGlobalY });
+
+        labelOffsetX = targetGlobalX - x;
+        labelOffsetY = targetGlobalY - y;
       } else {
-        defaultX = i * 250 + 150;
-        defaultY = lane * 80 + 80;
+        defaultX = i * COMMIT_STEP_HORIZONTAL + COMMIT_STEP_OFFSET_H;
+        defaultY = lane * LANE_SPACING_HORIZONTAL + 80;
         x = commit.position?.x ?? defaultX; // movable in time
         y = defaultY; // locked to lane row
         labelOffsetX = 0;
+        labelOffsetY = 0;
       }
-      
+
       const isHead = branch.head === commit.id;
       const isMerge = commit.parents.length > 1;
 
       newNodes.push({
         id: commit.id,
         type: 'commit',
-        position: { x, y }, 
+        position: { x, y },
         origin: [0.5, 0.5],
         draggable: true,
         zIndex: 10,
@@ -470,11 +411,14 @@ function GitGraphInner() {
           hideId: commit.hideId !== false,
           isVertical,
           labelOffsetX,
+          labelOffsetY,
         },
       });
 
-      // Create edges
-      commit.parents.forEach((parentId, parentIndex) => {
+      // Create edges (skip self-references and orphaned parents)
+      commit.parents
+        .filter(parentId => parentId !== commit.id && commits[parentId])
+        .forEach((parentId, parentIndex) => {
         const customColor = commit.parentColors?.[parentId];
         const defaultColor = parentIndex === 0 ? branch.color : branches[commits[parentId]?.branch]?.color || '#475569';
         const strokeColor = customColor || defaultColor;
@@ -483,13 +427,14 @@ function GitGraphInner() {
           id: `${parentId}-${commit.id}`,
           source: parentId, // Parent Commit
           target: commit.id, // Current Commit
-          type: 'default', // default is bezier
+          type: 'gitEdge', // custom L-shaped path with rounded corners
           zIndex: 5,
           deletable: true,
           style: {
             stroke: strokeColor,
             strokeWidth: 3,
-            opacity: 0.8,
+            opacity: 1.0,
+            filter: `drop-shadow(0 1px 3px ${strokeColor}50)`,
           },
         });
       });
@@ -497,19 +442,19 @@ function GitGraphInner() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [commits, branches, setNodes, setEdges, layoutDirection]);
+  }, [commits, branches, setNodes, setEdges, layoutDirection, branchLabelOrientation]);
 
 
   const onConnect = useCallback(
     (params: any) => {
-       console.log("GitGraph: onConnect", params);
-       const sourceNode = nodes.find(n => n.id === params.source);
-       const targetNode = nodes.find(n => n.id === params.target);
+      console.log("GitGraph: onConnect", params);
+      const sourceNode = nodes.find(n => n.id === params.source);
+      const targetNode = nodes.find(n => n.id === params.target);
 
-       if (sourceNode && targetNode) {
-          // target is the child, source is the parent
-          addParentToCommit(targetNode.id, sourceNode.id);
-       }
+      if (sourceNode && targetNode) {
+        // target is the child, source is the parent
+        addParentToCommit(targetNode.id, sourceNode.id);
+      }
     },
     [nodes, addParentToCommit],
   );
@@ -553,10 +498,10 @@ function GitGraphInner() {
     if (node.type === 'commit') {
       const commit = useGitStore.getState().commits[node.id];
       if (commit) {
-        setCommitPrompt({ 
-          isOpen: true, 
-          commitId: node.id, 
-          message: commit.message, 
+        setCommitPrompt({
+          isOpen: true,
+          commitId: node.id,
+          message: commit.message,
           messageRotated: commit.messageRotated || false,
           hideId: commit.hideId || false,
         });
@@ -566,7 +511,7 @@ function GitGraphInner() {
         const branchId = node.id.replace('lane-', '');
         const branch = useGitStore.getState().branches[branchId];
         if (branch) {
-          setRenameBranchPrompt({ isOpen: true, branchId, name: branch.name });
+          setRenameBranchPrompt({ isOpen: true, branchId, name: branch.name, color: branch.color });
         }
         return;
       }
@@ -596,9 +541,7 @@ function GitGraphInner() {
             <Redo className="w-5 h-5" />
           </button>
           <button
-            onClick={() => {
-              resetStore();
-            }}
+            onClick={() => setResetConfirmOpen(true)}
             className="p-2 bg-white flex items-center justify-center rounded-md border border-slate-200 shadow-sm text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors ml-2"
             title="Réinitialiser le dépôt"
           >
@@ -614,6 +557,16 @@ function GitGraphInner() {
           title={layoutDirection === 'horizontal' ? "Passer en lecture verticale" : "Passer en lecture horizontale"}
         >
           {layoutDirection === 'horizontal' ? <List className="w-5 h-5" /> : <LayoutGrid className="w-5 h-5" />}
+        </button>
+
+        <button
+          onClick={toggleBranchLabelOrientation}
+          className="flex items-center gap-2 py-2 px-3 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md font-bold text-sm shadow-sm transition-all border border-blue-200"
+          title={branchLabelOrientation === 'angled' ? "Passer les étiquettes de branches en mode vertical" : "Passer les étiquettes de branches en mode à 45°"}
+        >
+          <span className="w-5 h-5 flex items-center justify-center font-mono text-xs leading-none">
+            {branchLabelOrientation === 'angled' ? '45°' : '90°'}
+          </span>
         </button>
 
         <button
@@ -644,12 +597,12 @@ function GitGraphInner() {
         >
           <HelpCircle className="w-5 h-5" />
         </button>
-        <input 
-          type="file" 
-          accept=".json" 
-          className="hidden" 
-          ref={fileInputRef} 
-          onChange={handleLoad} 
+        <input
+          type="file"
+          accept=".json"
+          className="hidden"
+          ref={fileInputRef}
+          onChange={handleLoad}
         />
       </div>
 
@@ -668,6 +621,7 @@ function GitGraphInner() {
         onNodeContextMenu={onNodeContextMenu}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         zoomOnDoubleClick={false}
         defaultViewport={{ x: 50, y: 50, zoom: 1 }}
         minZoom={0.2}
@@ -676,12 +630,18 @@ function GitGraphInner() {
         className="bg-transparent font-sans"
       >
         <Controls className="fill-slate-700 bg-white border-slate-200" />
-        <MiniMap 
-          zoomable 
-          pannable 
-          nodeColor={(n) => n.data?.color as string || '#cbd5e1'} 
-          style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }} 
+        <MiniMap
+          zoomable
+          pannable
+          nodeColor={(n) => n.data?.color as string || '#cbd5e1'}
+          style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
           maskColor="rgba(255, 255, 255, 0.7)"
+        />
+        <Background
+          variant={"dots" as any}
+          gap={25}
+          size={1}
+          color="#94a3b830"
         />
 
       </ReactFlow>
@@ -691,8 +651,8 @@ function GitGraphInner() {
         <div className="flex flex-col gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Nom de la nouvelle branche</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               autoFocus
               value={branchPrompt.name}
               onChange={e => setBranchPrompt({ ...branchPrompt, name: e.target.value })}
@@ -706,7 +666,7 @@ function GitGraphInner() {
               }}
             />
           </div>
-          <button 
+          <button
             onClick={() => {
               if (branchPrompt.name) {
                 createBranch(branchPrompt.name, branchPrompt.commitId);
@@ -722,12 +682,12 @@ function GitGraphInner() {
       </Dialog>
 
       {/* Rename Branch Dialog */}
-      <Dialog isOpen={renameBranchPrompt.isOpen} onClose={() => setRenameBranchPrompt({ ...renameBranchPrompt, isOpen: false })} title="Renommer la branche">
+      <Dialog isOpen={renameBranchPrompt.isOpen} onClose={() => setRenameBranchPrompt({ ...renameBranchPrompt, isOpen: false })} title="Modifier la branche">
         <div className="flex flex-col gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Nom de la branche</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               autoFocus
               value={renameBranchPrompt.name}
               onChange={e => setRenameBranchPrompt({ ...renameBranchPrompt, name: e.target.value })}
@@ -736,25 +696,38 @@ function GitGraphInner() {
               onKeyDown={e => {
                 if (e.key === 'Enter' && renameBranchPrompt.name) {
                   updateBranchName(renameBranchPrompt.branchId, renameBranchPrompt.name);
-                  setRenameBranchPrompt({ isOpen: false, branchId: '', name: '' });
+                  updateBranchColor(renameBranchPrompt.branchId, renameBranchPrompt.color);
+                  setRenameBranchPrompt({ isOpen: false, branchId: '', name: '', color: '' });
                 }
               }}
             />
           </div>
 
-          {/* Column/Lane position managed visually via Drag & Drop on the head circle */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Couleur</label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                value={renameBranchPrompt.color}
+                onChange={e => setRenameBranchPrompt({ ...renameBranchPrompt, color: e.target.value })}
+                className="w-10 h-10 rounded border-0 cursor-pointer bg-transparent p-0"
+              />
+              <span className="text-sm text-slate-500 font-mono uppercase">{renameBranchPrompt.color}</span>
+            </div>
+          </div>
 
-          <button 
+          <button
             onClick={() => {
               if (renameBranchPrompt.name) {
                 updateBranchName(renameBranchPrompt.branchId, renameBranchPrompt.name);
-                setRenameBranchPrompt({ isOpen: false, branchId: '', name: '' });
+                updateBranchColor(renameBranchPrompt.branchId, renameBranchPrompt.color);
+                setRenameBranchPrompt({ isOpen: false, branchId: '', name: '', color: '' });
               }
             }}
             disabled={!renameBranchPrompt.name}
-            className="w-full py-2 bg-cyan-500 text-white rounded-md font-bold hover:bg-cyan-600 shadow-sm transition-colors disabled:opacity-50"
+            className="w-full py-2 bg-indigo-500 text-white rounded-md font-bold hover:bg-indigo-600 shadow-sm transition-colors disabled:opacity-50 mt-2"
           >
-            Renommer la branche
+            Enregistrer les modifications
           </button>
         </div>
       </Dialog>
@@ -764,8 +737,8 @@ function GitGraphInner() {
         <div className="flex flex-col gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Couleur du lien (Hex)</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               autoFocus
               value={colorPrompt.color}
               onChange={e => setColorPrompt({ ...colorPrompt, color: e.target.value })}
@@ -781,7 +754,7 @@ function GitGraphInner() {
               }}
             />
           </div>
-          <button 
+          <button
             onClick={() => {
               if (colorPrompt.edge) {
                 useGitStore.getState().updateEdgeColor(colorPrompt.edge.target, colorPrompt.edge.source, colorPrompt.color);
@@ -800,8 +773,8 @@ function GitGraphInner() {
         <div className="flex flex-col gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1 uppercase tracking-wider">Message du commit</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               autoFocus
               value={commitPrompt.message}
               onChange={e => setCommitPrompt({ ...commitPrompt, message: e.target.value })}
@@ -817,8 +790,8 @@ function GitGraphInner() {
           </div>
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 id="rotate-label"
                 checked={commitPrompt.messageRotated}
                 onChange={e => setCommitPrompt({ ...commitPrompt, messageRotated: e.target.checked })}
@@ -827,8 +800,8 @@ function GitGraphInner() {
               <label htmlFor="rotate-label" className="text-sm font-medium text-slate-700">Tourner l'étiquette à 45°</label>
             </div>
             <div className="flex items-center gap-2">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 id="show-id"
                 checked={!commitPrompt.hideId}
                 onChange={e => setCommitPrompt({ ...commitPrompt, hideId: !e.target.checked })}
@@ -837,7 +810,7 @@ function GitGraphInner() {
               <label htmlFor="show-id" className="text-sm font-medium text-slate-700">Afficher le numéro de commit</label>
             </div>
           </div>
-          <button 
+          <button
             onClick={() => {
               useGitStore.getState().updateCommitMessage(commitPrompt.commitId, commitPrompt.message, commitPrompt.messageRotated, commitPrompt.hideId);
               setCommitPrompt({ ...commitPrompt, isOpen: false });
@@ -852,8 +825,8 @@ function GitGraphInner() {
       {/* Save / Export Dialog */}
       <Dialog isOpen={savePromptOpen} onClose={() => setSavePromptOpen(false)} title="Exporter & Sauvegarder">
         <div className="flex flex-col gap-3">
-          <button 
-            onClick={handleExportSVG}
+          <button
+            onClick={() => handleExportImage('svg')}
             className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-2">
@@ -861,9 +834,9 @@ function GitGraphInner() {
             </span>
             <Download className="w-4 h-4 text-slate-400" />
           </button>
-          
-          <button 
-            onClick={handleExportPNG}
+
+          <button
+            onClick={() => handleExportImage('png')}
             className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-2">
@@ -872,7 +845,7 @@ function GitGraphInner() {
             <Download className="w-4 h-4 text-slate-400" />
           </button>
 
-          <button 
+          <button
             onClick={handleExportJSON}
             className="w-full flex items-center justify-between py-3 px-4 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-slate-50 text-slate-700 rounded-md font-medium transition-colors cursor-pointer"
           >
@@ -880,6 +853,40 @@ function GitGraphInner() {
               <FileJson className="w-5 h-5 text-indigo-500" /> JSON (Sauvegarde Data)
             </span>
             <Download className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
+      </Dialog>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog isOpen={resetConfirmOpen} onClose={() => setResetConfirmOpen(false)} title="Réinitialiser le dépôt">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-slate-600">Toutes les branches et commits seront supprimés. Cette action est irréversible.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setResetConfirmOpen(false)}
+              className="flex-1 py-2 bg-white border border-slate-200 text-slate-700 rounded-md font-medium hover:bg-slate-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={() => { resetStore(); setResetConfirmOpen(false); }}
+              className="flex-1 py-2 bg-red-500 text-white rounded-md font-bold hover:bg-red-600 shadow-sm transition-colors"
+            >
+              Réinitialiser
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Load Error Dialog */}
+      <Dialog isOpen={loadErrorOpen} onClose={() => setLoadErrorOpen(false)} title="Erreur d'import">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-slate-600">Le fichier sélectionné n'est pas un JSON valide ou son format est incompatible.</p>
+          <button
+            onClick={() => setLoadErrorOpen(false)}
+            className="w-full py-2 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 shadow-sm transition-colors"
+          >
+            OK
           </button>
         </div>
       </Dialog>
