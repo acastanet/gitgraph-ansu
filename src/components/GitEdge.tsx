@@ -26,57 +26,51 @@ function GitEdge({
   style,
   markerEnd,
   markerStart,
+  data,
 }: EdgeProps<Edge>) {
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const absDX = Math.abs(dx);
   const absDY = Math.abs(dy);
 
-  const isVertical = absDY > absDX;
+  const isCrossLane = (data as any)?.crossLane ?? false;
+  const layoutVertical = (data as any)?.layoutVertical ?? true;
+
+  // For cross-lane edges the path must exit/enter perpendicular to the lane axis:
+  // - vertical layout + cross-lane: LEFT/RIGHT handles → horizontal-first path
+  // - horizontal layout + cross-lane: TOP/BOTTOM handles → vertical-first path
+  // For same-lane edges use the natural geometry.
+  const useHorizontalPath = isCrossLane ? layoutVertical : absDX >= absDY;
+
+  // Cross-lane edges always use S-curve (no L-shape regardless of distance).
+  // Same-lane edges use the multi-lane threshold to choose between L-shape and S-curve.
+  const isMultiLane = isCrossLane
+    ? true
+    : (useHorizontalPath ? absDY > MULTI_LANE_THRESHOLD_HORIZONTAL : absDX > MULTI_LANE_THRESHOLD_VERTICAL);
 
   let path: string;
 
   if (absDX < 3 && absDY < 3) {
     path = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-  } else if (isVertical && absDX < 3) {
+  } else if (!isCrossLane && !useHorizontalPath && absDX < 3) {
     path = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-  } else if (!isVertical && absDY < 3) {
+  } else if (!isCrossLane && useHorizontalPath && absDY < 3) {
     path = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
   } else {
-    const isMultiLane = isVertical
-      ? absDX > MULTI_LANE_THRESHOLD_VERTICAL
-      : absDY > MULTI_LANE_THRESHOLD_HORIZONTAL;
-
     if (isMultiLane) {
-      // Cubic bezier S-curve: exits along source lane, crosses in the middle,
-      // arrives along target lane. Control points sit on the perpendicular
-      // half-way line, keeping tangents aligned with the lanes.
-      if (isVertical) {
-        const midY = (sourceY + targetY) / 2;
-        path = `M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`;
-      } else {
+      // S-curve: control points keep tangents aligned with the departure direction.
+      if (useHorizontalPath) {
         const midX = (sourceX + targetX) / 2;
         path = `M ${sourceX} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${targetX} ${targetY}`;
+      } else {
+        const midY = (sourceY + targetY) / 2;
+        path = `M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`;
       }
     } else {
-      // Adjacent lane: keep the compact L-shape with a single rounded corner.
+      // Adjacent: L-shape with a single rounded corner.
       const r = Math.min(24, absDX * 0.8, absDY * 0.8);
 
-      if (isVertical) {
-        const signX = Math.sign(dx);
-        const signY = Math.sign(dy);
-        const bendX = sourceX;
-        const bendY = targetY - signY * r;
-        const arcEndX = sourceX + signX * r;
-        const arcEndY = targetY;
-
-        path = [
-          `M ${sourceX} ${sourceY}`,
-          `L ${bendX} ${bendY}`,
-          `Q ${sourceX} ${targetY}, ${arcEndX} ${arcEndY}`,
-          `L ${targetX} ${targetY}`,
-        ].join(' ');
-      } else {
+      if (useHorizontalPath) {
         const signX = Math.sign(dx);
         const signY = Math.sign(dy);
         const bendX = targetX - signX * r;
@@ -88,6 +82,20 @@ function GitEdge({
           `M ${sourceX} ${sourceY}`,
           `L ${bendX} ${bendY}`,
           `Q ${targetX} ${sourceY}, ${arcEndX} ${arcEndY}`,
+          `L ${targetX} ${targetY}`,
+        ].join(' ');
+      } else {
+        const signX = Math.sign(dx);
+        const signY = Math.sign(dy);
+        const bendX = sourceX;
+        const bendY = targetY - signY * r;
+        const arcEndX = sourceX + signX * r;
+        const arcEndY = targetY;
+
+        path = [
+          `M ${sourceX} ${sourceY}`,
+          `L ${bendX} ${bendY}`,
+          `Q ${sourceX} ${targetY}, ${arcEndX} ${arcEndY}`,
           `L ${targetX} ${targetY}`,
         ].join(' ');
       }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { toSvg, toPng } from 'html-to-image';
-import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, FileCode2, Undo, Redo, RefreshCcw, LayoutGrid, List } from 'lucide-react';
+import { Save, Download, Crosshair, Upload, HelpCircle, FileJson, Image, Undo, Redo, RefreshCcw, LayoutGrid, List } from 'lucide-react';
 import { useGitStore } from '../store/useGitStore';
 import { computeLayout, BASE_VERTICAL_Y, LANE_SPACING_VERTICAL, LANE_SPACING_HORIZONTAL, COMMIT_STEP_VERTICAL, COMMIT_STEP_HORIZONTAL, COMMIT_STEP_OFFSET_H } from '../lib/layout';
 import CommitNode from './CommitNode';
@@ -77,14 +77,37 @@ function GitGraphInner() {
   const handleExportImage = useCallback((format: 'svg' | 'png') => {
     setSavePromptOpen(false);
     setTimeout(() => {
-      const nodes = getNodes();
-      if (nodes.length === 0) return;
+      const allNodes = getNodes();
+      if (allNodes.length === 0) return;
 
-      const nodesBounds = getNodesBounds(nodes);
-      const width = nodesBounds.width + 100;
-      const height = nodesBounds.height + 100;
+      const nodesBounds = getNodesBounds(allNodes);
+      const isVert = useGitStore.getState().layoutDirection === 'vertical';
 
-      const transform = getViewportForBounds(nodesBounds, width, height, 0.1, 2, 0);
+      // Les labels de commits sont positionnés en débordement (overflow) hors des 32×32 px
+      // du nœud. getNodesBounds ne les voit pas. On calcule le vrai bord droit.
+      let rightExtent = nodesBounds.x + nodesBounds.width;
+      if (isVert) {
+        allNodes.filter(n => n.type === 'commit').forEach(node => {
+          const offsetX = (node.data as Record<string, unknown>).labelOffsetX as number | undefined;
+          if (offsetX != null) {
+            rightExtent = Math.max(rightExtent, node.position.x + offsetX + 280);
+          }
+        });
+      }
+
+      // Marges : haut généreux pour les labels de lanes pivotés à -45°/-90°
+      const PAD_TOP = isVert ? 220 : 100;
+      const PAD_BOTTOM = 80;
+      const PAD_LEFT = 80;
+      const PAD_RIGHT = 80;
+
+      const bx = nodesBounds.x - PAD_LEFT;
+      const by = nodesBounds.y - PAD_TOP;
+      const width = (rightExtent + PAD_RIGHT) - bx;
+      const height = nodesBounds.height + PAD_TOP + PAD_BOTTOM;
+
+      const bounds = { x: bx, y: by, width, height };
+      const transform = getViewportForBounds(bounds, width, height, 0.1, 2, 0);
 
       const el = document.querySelector('.react-flow__viewport') as HTMLElement;
       if (!el) return;
@@ -97,7 +120,7 @@ function GitGraphInner() {
         style: {
           width: width.toString(),
           height: height.toString(),
-          transform: `translate(${transform.x + 50}px, ${transform.y + 50}px) scale(${transform.zoom})`,
+          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
         },
       }).then((dataUrl) => {
         const a = document.createElement('a');
@@ -186,7 +209,6 @@ function GitGraphInner() {
   }, [nodes, onNodesChange, layoutDirection]);
 
   const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
-    console.log("GitGraph: onNodeDragStop", node);
     if (node.type === 'commit') {
       updateCommitPosition(node.id, { x: node.position.x, y: node.position.y });
     } else if (node.type === 'lane') {
@@ -252,7 +274,6 @@ function GitGraphInner() {
 
   const onNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
-      console.log("GitGraph: onNodeContextMenu", node);
       e.preventDefault();
       if (node.type === 'commit') {
         setBranchPrompt({ isOpen: true, commitId: node.id, name: '' });
@@ -423,13 +444,31 @@ function GitGraphInner() {
         const defaultColor = parentIndex === 0 ? branch.color : branches[commits[parentId]?.branch]?.color || '#475569';
         const strokeColor = customColor || defaultColor;
 
+        const parentLane = branchLanes[commits[parentId]?.branch];
+        const commitLane = branchLanes[commit.branch];
+        const isCrossLane = parentLane !== undefined && commitLane !== undefined && parentLane !== commitLane;
+
+        let sourceHandle: string | undefined;
+        let targetHandle: string | undefined;
+
+        if (isCrossLane && isVertical) {
+          sourceHandle = parentLane < commitLane ? 'right-source' : 'left-source';
+          targetHandle = parentLane < commitLane ? 'left-target' : 'right-target';
+        } else if (isCrossLane && !isVertical) {
+          sourceHandle = parentLane < commitLane ? 'bottom-source' : 'top-source';
+          targetHandle = parentLane < commitLane ? 'top-target' : 'bottom-target';
+        }
+
         newEdges.push({
           id: `${parentId}-${commit.id}`,
-          source: parentId, // Parent Commit
-          target: commit.id, // Current Commit
-          type: 'gitEdge', // custom L-shaped path with rounded corners
+          source: parentId,
+          target: commit.id,
+          sourceHandle,
+          targetHandle,
+          type: 'gitEdge',
           zIndex: 5,
           deletable: true,
+          data: { crossLane: isCrossLane, layoutVertical: isVertical },
           style: {
             stroke: strokeColor,
             strokeWidth: 3,
@@ -447,7 +486,6 @@ function GitGraphInner() {
 
   const onConnect = useCallback(
     (params: any) => {
-      console.log("GitGraph: onConnect", params);
       const sourceNode = nodes.find(n => n.id === params.source);
       const targetNode = nodes.find(n => n.id === params.target);
 
@@ -460,7 +498,6 @@ function GitGraphInner() {
   );
 
   const onNodesDelete = useCallback((deletedNodes: Node[]) => {
-    console.log("GitGraph: onNodesDelete", deletedNodes);
     deletedNodes.forEach(node => {
       if (node.type === 'commit') {
         useGitStore.getState().deleteCommit(node.id);
@@ -472,7 +509,6 @@ function GitGraphInner() {
   }, []);
 
   const onEdgesDelete = useCallback((deletedEdges: Edge[]) => {
-    console.log("GitGraph: onEdgesDelete", deletedEdges);
     deletedEdges.forEach(edge => {
       const parentId = edge.source;
       const childId = edge.target;
@@ -486,7 +522,6 @@ function GitGraphInner() {
   }, []);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    console.log("GitGraph: onNodeClick", node);
     const { branchId } = node.data as { branchId: string };
     if (activeBranch !== branchId) {
       setActiveBranch(branchId);

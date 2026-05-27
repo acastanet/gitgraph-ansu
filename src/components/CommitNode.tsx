@@ -97,18 +97,27 @@ const CommitNode = ({ data }: CommitNodeProps) => {
       )}
 
       {/* React Flow Handles */}
-      <Handle 
-        type="target" 
-        position={data.isVertical ? Position.Bottom : Position.Left} 
+      <Handle
+        type="target"
+        position={data.isVertical ? Position.Bottom : Position.Left}
         className="!w-3 !h-3 !border-2 !bg-white !opacity-0 group-hover:!opacity-100 transition-opacity"
         style={{ borderColor: data.color }}
       />
-      <Handle 
-        type="source" 
-        position={data.isVertical ? Position.Top : Position.Right} 
+      <Handle
+        type="source"
+        position={data.isVertical ? Position.Top : Position.Right}
         className="!w-3 !h-3 !border-2 !bg-white !opacity-0 group-hover:!opacity-100 transition-opacity"
         style={{ borderColor: data.color }}
       />
+      {/* Named handles for cross-lane connections — positioned at the circle edge (r=10px) */}
+      <Handle id="left-target"   type="target" position={Position.Left}   style={{ opacity: 0, width: 1, height: 1, top: '50%', left: 6,  right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="right-target"  type="target" position={Position.Right}  style={{ opacity: 0, width: 1, height: 1, top: '50%', left: 26, right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="top-target"    type="target" position={Position.Top}    style={{ opacity: 0, width: 1, height: 1, left: '50%', top: 6,  right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, width: 1, height: 1, left: '50%', top: 26, right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="left-source"   type="source" position={Position.Left}   style={{ opacity: 0, width: 1, height: 1, top: '50%', left: 6,  right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="right-source"  type="source" position={Position.Right}  style={{ opacity: 0, width: 1, height: 1, top: '50%', left: 26, right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="top-source"    type="source" position={Position.Top}    style={{ opacity: 0, width: 1, height: 1, left: '50%', top: 6,  right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
+      <Handle id="bottom-source" type="source" position={Position.Bottom} style={{ opacity: 0, width: 1, height: 1, left: '50%', top: 26, right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)' }} />
     </div>
   );
 };
